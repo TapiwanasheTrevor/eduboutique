@@ -1,0 +1,2089 @@
+# Edu Boutique Bookstore - Backend CMS Specification
+
+## Executive Summary
+
+This document outlines the technical specifications for a Laravel Filament-based Content Management System (CMS) that will power the Edu Boutique Bookstore frontend. The system integrates with Odoo ERP for inventory management, order processing, and financial operations while providing a user-friendly interface for managing the online bookstore.
+
+---
+
+## Table of Contents
+
+1. [System Architecture](#system-architecture)
+2. [Technology Stack](#technology-stack)
+3. [Database Schema](#database-schema)
+4. [API Endpoints](#api-endpoints)
+5. [Filament Admin Panel](#filament-admin-panel)
+6. [Odoo Integration](#odoo-integration)
+7. [Features & Modules](#features--modules)
+8. [Security & Authentication](#security--authentication)
+9. [File Storage & Media Management](#file-storage--media-management)
+10. [Deployment & DevOps](#deployment--devops)
+11. [Development Phases](#development-phases)
+
+---
+
+## 1. System Architecture
+
+### Overview
+The backend CMS serves as the bridge between the React frontend, Supabase database, and Odoo ERP system.
+
+```
+┌─────────────────┐
+│  React Frontend │
+│   (Vite + TS)   │
+└────────┬────────┘
+         │ REST API
+         │
+┌────────▼────────────────────┐
+│   Laravel Backend CMS       │
+│   (Laravel 11 + Filament)   │
+├─────────────────────────────┤
+│  - API Controllers          │
+│  - Filament Resources       │
+│  - Background Jobs          │
+│  - Event Listeners          │
+└─────┬──────────────┬────────┘
+      │              │
+      │ PostgreSQL   │ XML-RPC/REST
+      │              │
+┌─────▼─────┐  ┌────▼──────┐
+│  Supabase │  │   Odoo    │
+│  Database │  │    ERP    │
+└───────────┘  └───────────┘
+```
+
+### Key Principles
+- **Separation of Concerns**: Frontend handles presentation, Backend handles business logic, Odoo manages ERP operations
+- **API-First Design**: All data operations exposed via RESTful APIs
+- **Real-time Sync**: Bi-directional synchronization between Laravel and Odoo
+- **Scalability**: Designed to handle growing inventory and order volumes
+- **Security**: Role-based access control, API authentication, secure data transmission
+
+---
+
+## 2. Technology Stack
+
+### Core Framework
+- **Laravel 11.x**: Latest LTS version
+- **PHP 8.2+**: Modern PHP with performance improvements
+- **Laravel Filament 3.x**: Admin panel framework
+
+### Database
+- **PostgreSQL 15+**: Primary database (via Supabase)
+- **Redis**: Caching and queue management
+
+### API & Integration
+- **Laravel Sanctum**: API authentication
+- **Guzzle HTTP**: External API communication
+- **Laravel Horizon**: Queue monitoring (optional)
+
+### Frontend (Admin Panel)
+- **Filament**: Admin panel UI
+- **Livewire**: Reactive components
+- **Alpine.js**: Lightweight JavaScript framework
+- **Tailwind CSS**: Utility-first CSS
+
+### DevOps & Tools
+- **Composer**: PHP dependency management
+- **Laravel Forge/Vapor**: Deployment (recommended)
+- **Supervisor**: Queue worker management
+- **Laravel Telescope**: Debugging tool (development)
+
+### Odoo Integration
+- **ripcord**: PHP XML-RPC library for Odoo
+- **Custom REST adapter**: For modern Odoo versions with REST API
+
+---
+
+## 3. Database Schema
+
+### Products Table
+```sql
+CREATE TABLE products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    description TEXT,
+    price_zwl DECIMAL(10, 2) DEFAULT 0,
+    price_usd DECIMAL(10, 2) DEFAULT 0,
+    category_id UUID REFERENCES categories(id),
+    syllabus VARCHAR(50) DEFAULT 'Other',
+    level VARCHAR(50) DEFAULT 'Primary',
+    subject VARCHAR(100),
+    publisher VARCHAR(255),
+    isbn VARCHAR(50),
+    author VARCHAR(255),
+    cover_image TEXT,
+    stock_status VARCHAR(20) DEFAULT 'in_stock',
+    stock_quantity INTEGER DEFAULT 0,
+    featured BOOLEAN DEFAULT false,
+    odoo_product_id INTEGER,
+    odoo_synced_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_syllabus ON products(syllabus);
+CREATE INDEX idx_products_level ON products(level);
+CREATE INDEX idx_products_featured ON products(featured);
+CREATE INDEX idx_products_odoo_id ON products(odoo_product_id);
+```
+
+### Categories Table
+```sql
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    description TEXT,
+    parent_id UUID REFERENCES categories(id),
+    image TEXT,
+    "order" INTEGER DEFAULT 0,
+    odoo_category_id INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_categories_parent ON categories(parent_id);
+CREATE INDEX idx_categories_odoo_id ON categories(odoo_category_id);
+```
+
+### Inquiries Table
+```sql
+CREATE TABLE inquiries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inquiry_number VARCHAR(50) UNIQUE NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_email VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50) NOT NULL,
+    delivery_method VARCHAR(50) DEFAULT 'agent_delivery',
+    delivery_address TEXT,
+    delivery_city VARCHAR(100),
+    message TEXT,
+    cart_items JSONB DEFAULT '[]',
+    total_zwl DECIMAL(10, 2) DEFAULT 0,
+    total_usd DECIMAL(10, 2) DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'pending',
+    odoo_order_id INTEGER,
+    odoo_synced_at TIMESTAMP,
+    assigned_to INTEGER REFERENCES users(id),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_inquiries_status ON inquiries(status);
+CREATE INDEX idx_inquiries_created_at ON inquiries(created_at DESC);
+CREATE INDEX idx_inquiries_odoo_id ON inquiries(odoo_order_id);
+CREATE INDEX idx_inquiries_number ON inquiries(inquiry_number);
+```
+
+### Contact Forms Table
+```sql
+CREATE TABLE contact_forms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(50) DEFAULT 'new',
+    assigned_to INTEGER REFERENCES users(id),
+    responded_at TIMESTAMP,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_contact_forms_status ON contact_forms(status);
+CREATE INDEX idx_contact_forms_created_at ON contact_forms(created_at DESC);
+```
+
+### Videos Table
+```sql
+CREATE TABLE videos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    video_url TEXT NOT NULL,
+    thumbnail_url TEXT,
+    category VARCHAR(50) DEFAULT 'other',
+    duration VARCHAR(20),
+    published BOOLEAN DEFAULT true,
+    views INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_videos_category ON videos(category);
+CREATE INDEX idx_videos_published ON videos(published);
+```
+
+### Newsletter Subscribers Table
+```sql
+CREATE TABLE newsletter_subscribers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    status VARCHAR(20) DEFAULT 'active',
+    subscribed_at TIMESTAMP DEFAULT NOW(),
+    unsubscribed_at TIMESTAMP
+);
+
+CREATE INDEX idx_subscribers_email ON newsletter_subscribers(email);
+CREATE INDEX idx_subscribers_status ON newsletter_subscribers(status);
+```
+
+### Odoo Sync Logs Table
+```sql
+CREATE TABLE odoo_sync_logs (
+    id SERIAL PRIMARY KEY,
+    model VARCHAR(100) NOT NULL,
+    record_id VARCHAR(100),
+    operation VARCHAR(50) NOT NULL,
+    direction VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    request_data JSONB,
+    response_data JSONB,
+    error_message TEXT,
+    synced_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_sync_logs_model ON odoo_sync_logs(model);
+CREATE INDEX idx_sync_logs_status ON odoo_sync_logs(status);
+CREATE INDEX idx_sync_logs_synced_at ON odoo_sync_logs(synced_at DESC);
+```
+
+### Users Table (Laravel Default + Custom Fields)
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    email_verified_at TIMESTAMP,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'staff',
+    odoo_user_id INTEGER,
+    is_active BOOLEAN DEFAULT true,
+    remember_token VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_active ON users(is_active);
+```
+
+### Settings Table (Key-Value Store)
+```sql
+CREATE TABLE settings (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    type VARCHAR(50) DEFAULT 'string',
+    group VARCHAR(100) DEFAULT 'general',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_settings_group ON settings(group);
+```
+
+---
+
+## 4. API Endpoints
+
+### Base URL
+```
+Production: https://api.eduboutique.co.zw/api/v1
+Development: http://localhost:8000/api/v1
+```
+
+### Authentication
+All authenticated endpoints require Bearer token:
+```
+Authorization: Bearer {token}
+```
+
+### Products Endpoints
+
+#### Get All Products (Paginated)
+```
+GET /products
+Query Parameters:
+  - page: integer (default: 1)
+  - per_page: integer (default: 12, max: 50)
+  - query: string (search term)
+  - syllabus[]: array (ZIMSEC, Cambridge, Other)
+  - level[]: array (ECD, Primary, Grade 7, O-Level, A-Level, IGCSE, AS-Level)
+  - subject[]: array (Mathematics, English, etc.)
+  - price_min: decimal
+  - price_max: decimal
+  - sort: string (featured, newest, price_asc, price_desc, alphabetical)
+  - stock_status[]: array (in_stock, low_stock, out_of_stock)
+
+Response: 200 OK
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "string",
+      "slug": "string",
+      "description": "string",
+      "price_zwl": decimal,
+      "price_usd": decimal,
+      "category": {
+        "id": "uuid",
+        "name": "string",
+        "slug": "string"
+      },
+      "syllabus": "string",
+      "level": "string",
+      "subject": "string",
+      "publisher": "string",
+      "isbn": "string",
+      "author": "string",
+      "cover_image": "url",
+      "stock_status": "string",
+      "stock_quantity": integer,
+      "featured": boolean,
+      "created_at": "datetime",
+      "updated_at": "datetime"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "last_page": 10,
+    "per_page": 12,
+    "total": 120,
+    "from": 1,
+    "to": 12
+  }
+}
+```
+
+#### Get Single Product
+```
+GET /products/{slug}
+
+Response: 200 OK
+{
+  "data": {
+    "id": "uuid",
+    "title": "string",
+    "slug": "string",
+    "description": "string",
+    "price_zwl": decimal,
+    "price_usd": decimal,
+    "category": {...},
+    "syllabus": "string",
+    "level": "string",
+    "subject": "string",
+    "publisher": "string",
+    "isbn": "string",
+    "author": "string",
+    "cover_image": "url",
+    "stock_status": "string",
+    "stock_quantity": integer,
+    "featured": boolean,
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+#### Get Featured Products
+```
+GET /products/featured
+
+Response: 200 OK
+{
+  "data": [
+    {...product objects...}
+  ]
+}
+```
+
+#### Search Products
+```
+GET /products/search?q={search_term}
+
+Response: 200 OK
+{
+  "data": [
+    {...product objects...}
+  ]
+}
+```
+
+### Categories Endpoints
+
+#### Get All Categories
+```
+GET /categories
+
+Response: 200 OK
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "slug": "string",
+      "description": "string",
+      "parent_id": "uuid|null",
+      "image": "url",
+      "order": integer,
+      "children": [
+        {...category objects...}
+      ]
+    }
+  ]
+}
+```
+
+#### Get Category by Slug
+```
+GET /categories/{slug}
+
+Response: 200 OK
+{
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "slug": "string",
+    "description": "string",
+    "parent": {...category object or null},
+    "children": [...]
+  }
+}
+```
+
+### Inquiries Endpoints
+
+#### Submit Inquiry
+```
+POST /inquiries
+Body:
+{
+  "customer_name": "string (required)",
+  "customer_email": "email (required)",
+  "customer_phone": "string (required)",
+  "delivery_method": "store_pickup|agent_delivery (required)",
+  "delivery_address": "string (required if agent_delivery)",
+  "delivery_city": "string (required if agent_delivery)",
+  "message": "string (optional)",
+  "cart_items": [
+    {
+      "product_id": "uuid",
+      "quantity": integer,
+      "price_zwl": decimal,
+      "price_usd": decimal
+    }
+  ],
+  "total_zwl": decimal,
+  "total_usd": decimal
+}
+
+Response: 201 Created
+{
+  "data": {
+    "id": "uuid",
+    "inquiry_number": "INQ-20250001",
+    "status": "pending",
+    "created_at": "datetime"
+  },
+  "message": "Inquiry submitted successfully. We'll contact you shortly."
+}
+```
+
+### Contact Form Endpoints
+
+#### Submit Contact Form
+```
+POST /contact
+Body:
+{
+  "name": "string (required)",
+  "email": "email (required)",
+  "phone": "string (required)",
+  "subject": "string (required)",
+  "message": "text (required)"
+}
+
+Response: 201 Created
+{
+  "data": {
+    "id": "uuid",
+    "created_at": "datetime"
+  },
+  "message": "Thank you for contacting us. We'll respond within 24 hours."
+}
+```
+
+### Videos Endpoints
+
+#### Get All Videos
+```
+GET /videos
+Query Parameters:
+  - category: string (study_tips, book_previews, syllabus_guides, other)
+
+Response: 200 OK
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "string",
+      "description": "string",
+      "video_url": "url",
+      "thumbnail_url": "url",
+      "category": "string",
+      "duration": "string",
+      "created_at": "datetime"
+    }
+  ]
+}
+```
+
+### Newsletter Endpoints
+
+#### Subscribe to Newsletter
+```
+POST /newsletter/subscribe
+Body:
+{
+  "email": "email (required)"
+}
+
+Response: 201 Created
+{
+  "message": "Successfully subscribed to newsletter"
+}
+```
+
+### Settings Endpoints
+
+#### Get Public Settings
+```
+GET /settings
+
+Response: 200 OK
+{
+  "data": {
+    "store_name": "Edu Boutique Bookstore",
+    "whatsapp_number": "+263775673510",
+    "email": "info@eduboutique.co.zw",
+    "address": "Harare, Zimbabwe",
+    "facebook_url": "https://facebook.com/eduboutique",
+    "business_hours": {...},
+    "delivery_info": {...}
+  }
+}
+```
+
+---
+
+## 5. Filament Admin Panel
+
+### Overview
+Laravel Filament provides a beautiful, modern admin panel with minimal code. The CMS will have the following sections:
+
+### Dashboard
+- **Metrics Widgets**:
+  - Total Inquiries (Today/Week/Month)
+  - Total Products
+  - Low Stock Alerts
+  - Pending Contact Forms
+  - Revenue Statistics (from Odoo)
+
+- **Charts**:
+  - Orders by Status (Pie Chart)
+  - Sales Trends (Line Chart)
+  - Top-Selling Products (Bar Chart)
+  - Popular Categories (Donut Chart)
+
+- **Recent Activity Feed**:
+  - Latest Inquiries
+  - New Contact Forms
+  - Low Stock Alerts
+  - Odoo Sync Status
+
+### Products Management
+
+#### Products Resource
+```php
+<?php
+
+namespace App\Filament\Resources;
+
+use Filament\Resources\Resource;
+use Filament\Forms;
+use Filament\Tables;
+
+class ProductResource extends Resource
+{
+    protected static ?string $model = Product::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-book-open';
+
+    protected static ?string $navigationGroup = 'Inventory';
+
+    public static function form(Form $form): Form
+    {
+        return $form->schema([
+            Forms\Components\Section::make('Basic Information')
+                ->schema([
+                    Forms\Components\TextInput::make('title')
+                        ->required()
+                        ->maxLength(255)
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn ($state, $set) =>
+                            $set('slug', Str::slug($state))
+                        ),
+
+                    Forms\Components\TextInput::make('slug')
+                        ->required()
+                        ->unique(ignoreRecord: true),
+
+                    Forms\Components\Select::make('category_id')
+                        ->relationship('category', 'name')
+                        ->required()
+                        ->searchable(),
+
+                    Forms\Components\RichEditor::make('description')
+                        ->columnSpanFull(),
+                ])->columns(2),
+
+            Forms\Components\Section::make('Pricing')
+                ->schema([
+                    Forms\Components\TextInput::make('price_zwl')
+                        ->label('Price (ZWL)')
+                        ->numeric()
+                        ->prefix('$')
+                        ->required(),
+
+                    Forms\Components\TextInput::make('price_usd')
+                        ->label('Price (USD)')
+                        ->numeric()
+                        ->prefix('$')
+                        ->required(),
+                ])->columns(2),
+
+            Forms\Components\Section::make('Educational Details')
+                ->schema([
+                    Forms\Components\Select::make('syllabus')
+                        ->options([
+                            'ZIMSEC' => 'ZIMSEC',
+                            'Cambridge' => 'Cambridge',
+                            'Other' => 'Other',
+                        ])
+                        ->required(),
+
+                    Forms\Components\Select::make('level')
+                        ->options([
+                            'ECD' => 'ECD',
+                            'Primary' => 'Primary',
+                            'Grade 7' => 'Grade 7',
+                            'O-Level' => 'O-Level',
+                            'A-Level' => 'A-Level',
+                            'IGCSE' => 'IGCSE',
+                            'AS-Level' => 'AS-Level',
+                        ])
+                        ->required(),
+
+                    Forms\Components\TextInput::make('subject')
+                        ->required(),
+                ])->columns(3),
+
+            Forms\Components\Section::make('Publishing Details')
+                ->schema([
+                    Forms\Components\TextInput::make('publisher')
+                        ->required(),
+
+                    Forms\Components\TextInput::make('author'),
+
+                    Forms\Components\TextInput::make('isbn')
+                        ->label('ISBN'),
+                ])->columns(3),
+
+            Forms\Components\Section::make('Inventory')
+                ->schema([
+                    Forms\Components\TextInput::make('stock_quantity')
+                        ->numeric()
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function ($state, $set) {
+                            if ($state > 10) {
+                                $set('stock_status', 'in_stock');
+                            } elseif ($state > 0) {
+                                $set('stock_status', 'low_stock');
+                            } else {
+                                $set('stock_status', 'out_of_stock');
+                            }
+                        }),
+
+                    Forms\Components\Select::make('stock_status')
+                        ->options([
+                            'in_stock' => 'In Stock',
+                            'low_stock' => 'Low Stock',
+                            'out_of_stock' => 'Out of Stock',
+                        ])
+                        ->required(),
+
+                    Forms\Components\Toggle::make('featured')
+                        ->label('Featured Product'),
+                ])->columns(3),
+
+            Forms\Components\Section::make('Media')
+                ->schema([
+                    Forms\Components\FileUpload::make('cover_image')
+                        ->image()
+                        ->directory('products')
+                        ->required(),
+                ])->columns(1),
+
+            Forms\Components\Section::make('Odoo Integration')
+                ->schema([
+                    Forms\Components\TextInput::make('odoo_product_id')
+                        ->label('Odoo Product ID')
+                        ->numeric()
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    Forms\Components\DateTimePicker::make('odoo_synced_at')
+                        ->label('Last Synced')
+                        ->disabled()
+                        ->dehydrated(false),
+                ])
+                ->columns(2)
+                ->collapsed()
+                ->hidden(fn ($record) => !$record?->odoo_product_id),
+        ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\ImageColumn::make('cover_image')
+                    ->square(),
+
+                Tables\Columns\TextColumn::make('title')
+                    ->searchable()
+                    ->sortable(),
+
+                Tables\Columns\BadgeColumn::make('syllabus')
+                    ->colors([
+                        'success' => 'ZIMSEC',
+                        'primary' => 'Cambridge',
+                        'secondary' => 'Other',
+                    ]),
+
+                Tables\Columns\TextColumn::make('level')
+                    ->badge(),
+
+                Tables\Columns\TextColumn::make('subject')
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('price_usd')
+                    ->money('USD')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('stock_quantity')
+                    ->sortable()
+                    ->color(fn ($state) => $state > 10 ? 'success' : ($state > 0 ? 'warning' : 'danger')),
+
+                Tables\Columns\BadgeColumn::make('stock_status')
+                    ->colors([
+                        'success' => 'in_stock',
+                        'warning' => 'low_stock',
+                        'danger' => 'out_of_stock',
+                    ]),
+
+                Tables\Columns\IconColumn::make('featured')
+                    ->boolean(),
+
+                Tables\Columns\IconColumn::make('odoo_product_id')
+                    ->label('Synced')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle'),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('syllabus')
+                    ->options([
+                        'ZIMSEC' => 'ZIMSEC',
+                        'Cambridge' => 'Cambridge',
+                        'Other' => 'Other',
+                    ]),
+
+                Tables\Filters\SelectFilter::make('level'),
+
+                Tables\Filters\SelectFilter::make('stock_status')
+                    ->options([
+                        'in_stock' => 'In Stock',
+                        'low_stock' => 'Low Stock',
+                        'out_of_stock' => 'Out of Stock',
+                    ]),
+
+                Tables\Filters\TernaryFilter::make('featured'),
+            ])
+            ->actions([
+                Tables\Actions\EditAction::make(),
+
+                Tables\Actions\Action::make('sync_to_odoo')
+                    ->icon('heroicon-o-arrow-path')
+                    ->action(fn (Product $record) =>
+                        dispatch(new SyncProductToOdoo($record))
+                    )
+                    ->requiresConfirmation(),
+            ])
+            ->bulkActions([
+                Tables\Actions\DeleteBulkAction::make(),
+
+                Tables\Actions\BulkAction::make('sync_to_odoo')
+                    ->label('Sync to Odoo')
+                    ->icon('heroicon-o-arrow-path')
+                    ->action(fn (Collection $records) =>
+                        $records->each(fn ($record) =>
+                            dispatch(new SyncProductToOdoo($record))
+                        )
+                    )
+                    ->requiresConfirmation(),
+            ]);
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListProducts::route('/'),
+            'create' => Pages\CreateProduct::route('/create'),
+            'edit' => Pages\EditProduct::route('/{record}/edit'),
+        ];
+    }
+}
+```
+
+#### Categories Resource
+- Hierarchical tree view
+- Drag-and-drop reordering
+- Parent-child relationships
+- Image upload
+- Odoo category mapping
+
+### Orders & Inquiries
+
+#### Inquiries Resource
+```php
+public static function form(Form $form): Form
+{
+    return $form->schema([
+        Forms\Components\Section::make('Inquiry Details')
+            ->schema([
+                Forms\Components\TextInput::make('inquiry_number')
+                    ->disabled()
+                    ->dehydrated(false),
+
+                Forms\Components\Select::make('status')
+                    ->options([
+                        'pending' => 'Pending',
+                        'contacted' => 'Contacted',
+                        'confirmed' => 'Confirmed',
+                        'completed' => 'Completed',
+                    ])
+                    ->required(),
+
+                Forms\Components\Select::make('assigned_to')
+                    ->relationship('assignedUser', 'name')
+                    ->searchable(),
+            ])->columns(3),
+
+        Forms\Components\Section::make('Customer Information')
+            ->schema([
+                Forms\Components\TextInput::make('customer_name')
+                    ->required()
+                    ->disabled(),
+
+                Forms\Components\TextInput::make('customer_email')
+                    ->email()
+                    ->required()
+                    ->disabled(),
+
+                Forms\Components\TextInput::make('customer_phone')
+                    ->tel()
+                    ->required()
+                    ->disabled(),
+            ])->columns(3),
+
+        Forms\Components\Section::make('Delivery Details')
+            ->schema([
+                Forms\Components\Select::make('delivery_method')
+                    ->options([
+                        'store_pickup' => 'Store Pickup',
+                        'agent_delivery' => 'Agent Delivery',
+                    ])
+                    ->disabled(),
+
+                Forms\Components\TextInput::make('delivery_city')
+                    ->disabled(),
+
+                Forms\Components\Textarea::make('delivery_address')
+                    ->disabled(),
+            ])->columns(2),
+
+        Forms\Components\Section::make('Order Items')
+            ->schema([
+                Forms\Components\Repeater::make('cart_items')
+                    ->schema([
+                        Forms\Components\Select::make('product_id')
+                            ->relationship('product', 'title')
+                            ->disabled(),
+
+                        Forms\Components\TextInput::make('quantity')
+                            ->numeric()
+                            ->disabled(),
+
+                        Forms\Components\TextInput::make('price_usd')
+                            ->numeric()
+                            ->prefix('$')
+                            ->disabled(),
+                    ])
+                    ->columns(3)
+                    ->disabled()
+                    ->defaultItems(0),
+            ]),
+
+        Forms\Components\Section::make('Totals')
+            ->schema([
+                Forms\Components\TextInput::make('total_zwl')
+                    ->label('Total (ZWL)')
+                    ->numeric()
+                    ->prefix('$')
+                    ->disabled(),
+
+                Forms\Components\TextInput::make('total_usd')
+                    ->label('Total (USD)')
+                    ->numeric()
+                    ->prefix('$')
+                    ->disabled(),
+            ])->columns(2),
+
+        Forms\Components\Section::make('Internal Notes')
+            ->schema([
+                Forms\Components\Textarea::make('notes')
+                    ->rows(4),
+            ]),
+
+        Forms\Components\Section::make('Odoo Integration')
+            ->schema([
+                Forms\Components\TextInput::make('odoo_order_id')
+                    ->label('Odoo Order ID')
+                    ->numeric()
+                    ->disabled()
+                    ->dehydrated(false),
+
+                Forms\Components\DateTimePicker::make('odoo_synced_at')
+                    ->label('Last Synced')
+                    ->disabled()
+                    ->dehydrated(false),
+            ])
+            ->columns(2)
+            ->collapsed()
+            ->hidden(fn ($record) => !$record?->odoo_order_id),
+    ]);
+}
+
+public static function table(Table $table): Table
+{
+    return $table
+        ->columns([
+            Tables\Columns\TextColumn::make('inquiry_number')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('customer_name')
+                ->searchable(),
+
+            Tables\Columns\TextColumn::make('customer_email')
+                ->searchable()
+                ->copyable(),
+
+            Tables\Columns\TextColumn::make('customer_phone')
+                ->searchable()
+                ->copyable(),
+
+            Tables\Columns\BadgeColumn::make('status')
+                ->colors([
+                    'secondary' => 'pending',
+                    'primary' => 'contacted',
+                    'warning' => 'confirmed',
+                    'success' => 'completed',
+                ]),
+
+            Tables\Columns\TextColumn::make('total_usd')
+                ->money('USD')
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('delivery_method')
+                ->badge(),
+
+            Tables\Columns\TextColumn::make('assignedUser.name')
+                ->label('Assigned To'),
+
+            Tables\Columns\IconColumn::make('odoo_order_id')
+                ->label('Synced')
+                ->boolean()
+                ->trueIcon('heroicon-o-check-circle')
+                ->falseIcon('heroicon-o-x-circle'),
+
+            Tables\Columns\TextColumn::make('created_at')
+                ->dateTime()
+                ->sortable(),
+        ])
+        ->defaultSort('created_at', 'desc')
+        ->filters([
+            Tables\Filters\SelectFilter::make('status'),
+            Tables\Filters\SelectFilter::make('delivery_method'),
+            Tables\Filters\SelectFilter::make('assigned_to')
+                ->relationship('assignedUser', 'name'),
+        ])
+        ->actions([
+            Tables\Actions\ViewAction::make(),
+            Tables\Actions\EditAction::make(),
+
+            Tables\Actions\Action::make('sync_to_odoo')
+                ->icon('heroicon-o-arrow-path')
+                ->action(fn (Inquiry $record) =>
+                    dispatch(new SyncInquiryToOdoo($record))
+                )
+                ->requiresConfirmation()
+                ->visible(fn (Inquiry $record) => !$record->odoo_order_id),
+
+            Tables\Actions\Action::make('send_email')
+                ->icon('heroicon-o-envelope')
+                ->action(fn (Inquiry $record) =>
+                    dispatch(new SendInquiryEmailToCustomer($record))
+                )
+                ->requiresConfirmation(),
+        ]);
+}
+```
+
+### Contact Forms Management
+
+#### Contact Forms Resource
+- Status tracking (New, In Progress, Resolved)
+- Assignment to staff members
+- Email response integration
+- Notes and internal comments
+- Filters and search
+
+### Content Management
+
+#### Videos Resource
+- YouTube/Vimeo URL input
+- Automatic thumbnail generation
+- Category management
+- View count tracking
+- Published/draft status
+
+#### Settings Resource
+- Key-value configuration
+- Grouped settings
+- Type validation (string, number, boolean, json)
+- Settings groups:
+  - General (Store name, contact info)
+  - Social Media (Facebook, WhatsApp)
+  - Business Hours
+  - Delivery Information
+  - Payment Methods
+  - Odoo Configuration
+
+### User Management
+
+#### Users Resource
+- Role-based access control
+  - **Super Admin**: Full access
+  - **Admin**: Manage products, orders, content
+  - **Sales**: View and manage inquiries
+  - **Content Manager**: Manage products and content
+  - **Viewer**: Read-only access
+
+- User profiles
+- Activity logs
+- Odoo user linking
+- Password reset functionality
+
+### Reports & Analytics
+
+#### Reports Section
+- **Sales Reports**:
+  - Daily/Weekly/Monthly sales
+  - Sales by category
+  - Sales by syllabus/level
+  - Top-selling products
+  - Revenue trends
+
+- **Inventory Reports**:
+  - Stock levels
+  - Low stock alerts
+  - Out of stock items
+  - Stock value
+
+- **Customer Reports**:
+  - New customers
+  - Inquiry conversion rate
+  - Customer locations (cities)
+  - Delivery method preferences
+
+- **Odoo Sync Reports**:
+  - Sync success/failure rates
+  - Sync logs
+  - Unsynced records
+  - Sync queue status
+
+#### Export Functionality
+- Export to Excel/CSV
+- Export to PDF
+- Scheduled email reports
+
+---
+
+## 6. Odoo Integration
+
+### Overview
+Odoo ERP will handle:
+- Inventory management
+- Order processing
+- Customer management
+- Financial accounting
+- Invoicing
+- Supplier management
+
+Laravel CMS will:
+- Display products from Odoo
+- Send inquiries as sales orders to Odoo
+- Sync stock levels from Odoo
+- Update order statuses from Odoo
+
+### Connection Setup
+
+#### Configuration (config/odoo.php)
+```php
+<?php
+
+return [
+    'url' => env('ODOO_URL', 'https://your-odoo-instance.odoo.com'),
+    'database' => env('ODOO_DATABASE', 'your-database'),
+    'username' => env('ODOO_USERNAME'),
+    'password' => env('ODOO_PASSWORD'),
+    'api_key' => env('ODOO_API_KEY'), // For newer Odoo versions
+
+    'sync' => [
+        'products_interval' => env('ODOO_SYNC_PRODUCTS_INTERVAL', 30), // minutes
+        'orders_interval' => env('ODOO_SYNC_ORDERS_INTERVAL', 5), // minutes
+        'stock_interval' => env('ODOO_SYNC_STOCK_INTERVAL', 15), // minutes
+    ],
+
+    'models' => [
+        'product' => 'product.product',
+        'category' => 'product.category',
+        'order' => 'sale.order',
+        'partner' => 'res.partner',
+    ],
+];
+```
+
+### Odoo Service Class
+
+```php
+<?php
+
+namespace App\Services;
+
+use Ripcord\Ripcord;
+use Illuminate\Support\Facades\Log;
+use App\Models\OdooSyncLog;
+
+class OdooService
+{
+    protected $url;
+    protected $db;
+    protected $uid;
+    protected $password;
+    protected $models;
+
+    public function __construct()
+    {
+        $this->url = config('odoo.url');
+        $this->db = config('odoo.database');
+        $this->password = config('odoo.password');
+
+        $this->authenticate();
+    }
+
+    protected function authenticate()
+    {
+        $common = Ripcord::client("{$this->url}/xmlrpc/2/common");
+
+        $this->uid = $common->authenticate(
+            $this->db,
+            config('odoo.username'),
+            $this->password,
+            []
+        );
+
+        if (!$this->uid) {
+            throw new \Exception('Odoo authentication failed');
+        }
+
+        $this->models = Ripcord::client("{$this->url}/xmlrpc/2/object");
+    }
+
+    public function search($model, array $domain = [], array $fields = [], $limit = null)
+    {
+        try {
+            $ids = $this->models->execute_kw(
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                'search',
+                [$domain],
+                ['limit' => $limit]
+            );
+
+            if (empty($ids)) {
+                return [];
+            }
+
+            return $this->read($model, $ids, $fields);
+
+        } catch (\Exception $e) {
+            $this->logSync($model, null, 'search', 'from_odoo', 'error', $domain, null, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function read($model, $ids, array $fields = [])
+    {
+        try {
+            $records = $this->models->execute_kw(
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                'read',
+                [$ids],
+                ['fields' => $fields]
+            );
+
+            $this->logSync($model, null, 'read', 'from_odoo', 'success', ['ids' => $ids], $records);
+
+            return $records;
+
+        } catch (\Exception $e) {
+            $this->logSync($model, null, 'read', 'from_odoo', 'error', ['ids' => $ids], null, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function create($model, array $data)
+    {
+        try {
+            $id = $this->models->execute_kw(
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                'create',
+                [$data]
+            );
+
+            $this->logSync($model, $id, 'create', 'to_odoo', 'success', $data, ['id' => $id]);
+
+            return $id;
+
+        } catch (\Exception $e) {
+            $this->logSync($model, null, 'create', 'to_odoo', 'error', $data, null, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function update($model, $id, array $data)
+    {
+        try {
+            $result = $this->models->execute_kw(
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                'write',
+                [[$id], $data]
+            );
+
+            $this->logSync($model, $id, 'update', 'to_odoo', 'success', $data, ['result' => $result]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            $this->logSync($model, $id, 'update', 'to_odoo', 'error', $data, null, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function delete($model, $id)
+    {
+        try {
+            $result = $this->models->execute_kw(
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                'unlink',
+                [[$id]]
+            );
+
+            $this->logSync($model, $id, 'delete', 'to_odoo', 'success', [], ['result' => $result]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            $this->logSync($model, $id, 'delete', 'to_odoo', 'error', [], null, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    protected function logSync($model, $recordId, $operation, $direction, $status, $requestData, $responseData, $errorMessage = null)
+    {
+        OdooSyncLog::create([
+            'model' => $model,
+            'record_id' => $recordId,
+            'operation' => $operation,
+            'direction' => $direction,
+            'status' => $status,
+            'request_data' => $requestData,
+            'response_data' => $responseData,
+            'error_message' => $errorMessage,
+        ]);
+    }
+}
+```
+
+### Sync Jobs
+
+#### Sync Products from Odoo
+```php
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Product;
+use App\Services\OdooService;
+use Illuminate\Bus\Queueable;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+
+class SyncProductsFromOdoo implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public function handle(OdooService $odoo)
+    {
+        $products = $odoo->search(
+            'product.product',
+            [['sale_ok', '=', true]], // Only products available for sale
+            [
+                'name',
+                'default_code',
+                'list_price',
+                'standard_price',
+                'categ_id',
+                'qty_available',
+                'description_sale',
+                'image_1920',
+            ]
+        );
+
+        foreach ($products as $odooProduct) {
+            $this->syncProduct($odooProduct);
+        }
+    }
+
+    protected function syncProduct($odooProduct)
+    {
+        $product = Product::updateOrCreate(
+            ['odoo_product_id' => $odooProduct['id']],
+            [
+                'title' => $odooProduct['name'],
+                'slug' => Str::slug($odooProduct['name']),
+                'price_usd' => $odooProduct['list_price'],
+                'stock_quantity' => $odooProduct['qty_available'] ?? 0,
+                'stock_status' => $this->determineStockStatus($odooProduct['qty_available'] ?? 0),
+                'description' => $odooProduct['description_sale'] ?? '',
+                'odoo_synced_at' => now(),
+            ]
+        );
+
+        // Handle image sync if needed
+        if (isset($odooProduct['image_1920'])) {
+            $this->syncProductImage($product, $odooProduct['image_1920']);
+        }
+    }
+
+    protected function determineStockStatus($quantity)
+    {
+        if ($quantity > 10) return 'in_stock';
+        if ($quantity > 0) return 'low_stock';
+        return 'out_of_stock';
+    }
+
+    protected function syncProductImage($product, $base64Image)
+    {
+        // Decode and store image
+        // Implementation details...
+    }
+}
+```
+
+#### Sync Inquiry to Odoo
+```php
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Inquiry;
+use App\Services\OdooService;
+use Illuminate\Bus\Queueable;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+
+class SyncInquiryToOdoo implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $inquiry;
+
+    public function __construct(Inquiry $inquiry)
+    {
+        $this->inquiry = $inquiry;
+    }
+
+    public function handle(OdooService $odoo)
+    {
+        // First, create or get the customer (partner) in Odoo
+        $partnerId = $this->syncCustomer($odoo);
+
+        // Then create the sales order
+        $orderId = $this->createSalesOrder($odoo, $partnerId);
+
+        // Update the inquiry with Odoo order ID
+        $this->inquiry->update([
+            'odoo_order_id' => $orderId,
+            'odoo_synced_at' => now(),
+        ]);
+    }
+
+    protected function syncCustomer(OdooService $odoo)
+    {
+        // Search for existing customer by email
+        $partners = $odoo->search(
+            'res.partner',
+            [['email', '=', $this->inquiry->customer_email]],
+            ['id', 'name', 'email']
+        );
+
+        if (!empty($partners)) {
+            return $partners[0]['id'];
+        }
+
+        // Create new customer
+        return $odoo->create('res.partner', [
+            'name' => $this->inquiry->customer_name,
+            'email' => $this->inquiry->customer_email,
+            'phone' => $this->inquiry->customer_phone,
+            'street' => $this->inquiry->delivery_address,
+            'city' => $this->inquiry->delivery_city,
+            'country_id' => $this->getZimbabweCountryId($odoo),
+        ]);
+    }
+
+    protected function createSalesOrder(OdooService $odoo, $partnerId)
+    {
+        $orderLines = [];
+
+        foreach ($this->inquiry->cart_items as $item) {
+            $product = Product::find($item['product_id']);
+
+            if ($product && $product->odoo_product_id) {
+                $orderLines[] = [
+                    0, 0, [
+                        'product_id' => $product->odoo_product_id,
+                        'product_uom_qty' => $item['quantity'],
+                        'price_unit' => $item['price_usd'],
+                    ]
+                ];
+            }
+        }
+
+        return $odoo->create('sale.order', [
+            'partner_id' => $partnerId,
+            'origin' => $this->inquiry->inquiry_number,
+            'client_order_ref' => $this->inquiry->inquiry_number,
+            'order_line' => $orderLines,
+            'note' => $this->inquiry->message,
+        ]);
+    }
+
+    protected function getZimbabweCountryId(OdooService $odoo)
+    {
+        $countries = $odoo->search(
+            'res.country',
+            [['code', '=', 'ZW']],
+            ['id']
+        );
+
+        return $countries[0]['id'] ?? null;
+    }
+}
+```
+
+#### Sync Stock Levels from Odoo
+```php
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Product;
+use App\Services\OdooService;
+use Illuminate\Bus\Queueable;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+
+class SyncStockLevelsFromOdoo implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public function handle(OdooService $odoo)
+    {
+        $products = Product::whereNotNull('odoo_product_id')->get();
+
+        foreach ($products as $product) {
+            $this->syncStockLevel($odoo, $product);
+        }
+    }
+
+    protected function syncStockLevel(OdooService $odoo, Product $product)
+    {
+        $odooProduct = $odoo->read(
+            'product.product',
+            [$product->odoo_product_id],
+            ['qty_available']
+        );
+
+        if (!empty($odooProduct)) {
+            $quantity = $odooProduct[0]['qty_available'] ?? 0;
+
+            $product->update([
+                'stock_quantity' => $quantity,
+                'stock_status' => $this->determineStockStatus($quantity),
+                'odoo_synced_at' => now(),
+            ]);
+        }
+    }
+
+    protected function determineStockStatus($quantity)
+    {
+        if ($quantity > 10) return 'in_stock';
+        if ($quantity > 0) return 'low_stock';
+        return 'out_of_stock';
+    }
+}
+```
+
+### Scheduled Tasks
+
+Add to `app/Console/Kernel.php`:
+
+```php
+protected function schedule(Schedule $schedule)
+{
+    // Sync products every 30 minutes
+    $schedule->job(new SyncProductsFromOdoo())
+        ->everyThirtyMinutes()
+        ->onOneServer()
+        ->runInBackground();
+
+    // Sync stock levels every 15 minutes
+    $schedule->job(new SyncStockLevelsFromOdoo())
+        ->everyFifteenMinutes()
+        ->onOneServer()
+        ->runInBackground();
+
+    // Check for order updates every 5 minutes
+    $schedule->job(new SyncOrderStatusesFromOdoo())
+        ->everyFiveMinutes()
+        ->onOneServer()
+        ->runInBackground();
+
+    // Daily cleanup of old sync logs (keep 30 days)
+    $schedule->command('sync-logs:cleanup')
+        ->daily()
+        ->at('02:00');
+}
+```
+
+### Webhook Handlers (Optional)
+
+For real-time updates from Odoo:
+
+```php
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use Illuminate\Http\Request;
+use App\Jobs\SyncProductFromOdoo;
+use App\Jobs\SyncOrderStatusFromOdoo;
+
+class OdooWebhookController extends Controller
+{
+    public function productUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+        ]);
+
+        dispatch(new SyncProductFromOdoo($validated['product_id']));
+
+        return response()->json(['status' => 'queued']);
+    }
+
+    public function orderUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id' => 'required|integer',
+        ]);
+
+        dispatch(new SyncOrderStatusFromOdoo($validated['order_id']));
+
+        return response()->json(['status' => 'queued']);
+    }
+}
+```
+
+---
+
+## 7. Features & Modules
+
+### Inventory Management
+- Product CRUD operations
+- Category management
+- Bulk import/export (Excel, CSV)
+- Image management
+- Stock level tracking
+- Low stock alerts
+- Product variants (if needed)
+- Odoo product synchronization
+
+### Order Management
+- Inquiry tracking
+- Status workflow
+- Assignment to staff
+- Email notifications
+- PDF generation
+- Order notes
+- Delivery tracking
+- Odoo order synchronization
+
+### Customer Management
+- Customer database
+- Order history
+- Contact preferences
+- Newsletter subscriptions
+- Customer segmentation
+
+### Content Management
+- Video library
+- Category pages
+- Homepage banners
+- Promotional content
+- SEO meta tags
+
+### Communication
+- Email templates
+- WhatsApp integration
+- Contact form handling
+- Newsletter management
+- Order notifications
+
+### Reporting & Analytics
+- Sales reports
+- Inventory reports
+- Customer analytics
+- Odoo sync reports
+- Export functionality
+
+### Settings & Configuration
+- Store settings
+- Payment methods
+- Delivery options
+- Email configuration
+- Odoo credentials
+- API keys
+
+---
+
+## 8. Security & Authentication
+
+### API Authentication
+- Laravel Sanctum for token-based auth
+- API rate limiting
+- CORS configuration
+- Request validation
+
+### Admin Panel Security
+- Two-factor authentication (optional)
+- Password policies
+- Session management
+- Activity logging
+- Role-based permissions
+
+### Data Protection
+- HTTPS enforcement
+- SQL injection prevention
+- XSS protection
+- CSRF protection
+- Input sanitization
+- File upload validation
+
+### Backup & Recovery
+- Automated database backups
+- Backup retention policy
+- Disaster recovery plan
+- Data export capabilities
+
+---
+
+## 9. File Storage & Media Management
+
+### Storage Configuration
+```php
+// config/filesystems.php
+'disks' => [
+    'public' => [
+        'driver' => 'local',
+        'root' => storage_path('app/public'),
+        'url' => env('APP_URL').'/storage',
+        'visibility' => 'public',
+    ],
+
+    's3' => [
+        'driver' => 's3',
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION'),
+        'bucket' => env('AWS_BUCKET'),
+        'url' => env('AWS_URL'),
+        'endpoint' => env('AWS_ENDPOINT'),
+    ],
+
+    'supabase' => [
+        'driver' => 's3',
+        'key' => env('SUPABASE_ACCESS_KEY'),
+        'secret' => env('SUPABASE_SECRET_KEY'),
+        'region' => env('SUPABASE_REGION'),
+        'bucket' => env('SUPABASE_BUCKET'),
+        'endpoint' => env('SUPABASE_STORAGE_ENDPOINT'),
+        'use_path_style_endpoint' => true,
+    ],
+],
+```
+
+### Image Processing
+- Automatic image optimization
+- Multiple size generation (thumbnail, medium, large)
+- WebP conversion
+- Lazy loading support
+- CDN integration
+
+### Video Management
+- YouTube/Vimeo embedding
+- Thumbnail extraction
+- Video metadata storage
+
+---
+
+## 10. Deployment & DevOps
+
+### Server Requirements
+- **PHP**: 8.2 or higher
+- **Database**: PostgreSQL 15+
+- **Cache**: Redis 6+
+- **Web Server**: Nginx or Apache
+- **Queue Worker**: Supervisor
+- **Node.js**: 18+ (for build assets)
+
+### Deployment Process
+1. **Setup Supabase Connection**
+   - Configure database credentials
+   - Run migrations
+   - Seed initial data
+
+2. **Install Dependencies**
+   ```bash
+   composer install --optimize-autoloader --no-dev
+   npm install && npm run build
+   ```
+
+3. **Configure Environment**
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:cache
+   ```
+
+4. **Setup Queue Workers**
+   ```bash
+   sudo supervisorctl reread
+   sudo supervisorctl update
+   sudo supervisorctl start laravel-worker:*
+   ```
+
+5. **Setup Scheduler**
+   ```bash
+   * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+   ```
+
+6. **Configure Web Server**
+   - Point to `public/` directory
+   - Configure SSL certificate
+   - Setup redirects
+
+### Monitoring
+- Laravel Telescope (development)
+- Laravel Horizon (queue monitoring)
+- Error tracking (Sentry, Bugsnag)
+- Performance monitoring
+- Server monitoring
+
+### CI/CD Pipeline
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-dev --optimize-autoloader
+
+      - name: Run Tests
+        run: php artisan test
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/eduboutique
+            git pull origin main
+            composer install --optimize-autoloader --no-dev
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan queue:restart
+```
+
+---
+
+## 11. Development Phases
+
+### Phase 1: Foundation (Weeks 1-2)
+- **Week 1**:
+  - Laravel project setup
+  - Supabase database connection
+  - User authentication
+  - Basic Filament admin panel
+
+- **Week 2**:
+  - Product model and migrations
+  - Category model and migrations
+  - Products Filament resource
+  - Categories Filament resource
+  - Basic API endpoints
+
+### Phase 2: Core Features (Weeks 3-4)
+- **Week 3**:
+  - Inquiry management
+  - Contact form handling
+  - Email notifications
+  - File upload functionality
+
+- **Week 4**:
+  - Videos management
+  - Newsletter subscriptions
+  - Settings management
+  - API documentation
+
+### Phase 3: Odoo Integration (Weeks 5-6)
+- **Week 5**:
+  - Odoo service class
+  - Product synchronization
+  - Stock level sync
+  - Sync logging
+
+- **Week 6**:
+  - Order synchronization
+  - Customer synchronization
+  - Webhook handlers
+  - Sync monitoring dashboard
+
+### Phase 4: Enhancement & Testing (Weeks 7-8)
+- **Week 7**:
+  - Reports and analytics
+  - Bulk operations
+  - Advanced filters
+  - Export functionality
+
+- **Week 8**:
+  - Comprehensive testing
+  - Performance optimization
+  - Security audit
+  - Bug fixes
+
+### Phase 5: Deployment & Launch (Week 9)
+- Production server setup
+- Database migration
+- SSL configuration
+- Queue worker setup
+- Monitoring setup
+- Go-live checklist
+- Documentation
+
+---
+
+## Appendices
+
+### A. Environment Variables Template
+```env
+# Application
+APP_NAME="Edu Boutique CMS"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://api.eduboutique.co.zw
+
+# Database (Supabase)
+DB_CONNECTION=pgsql
+DB_HOST=db.xxx.supabase.co
+DB_PORT=5432
+DB_DATABASE=postgres
+DB_USERNAME=postgres
+DB_PASSWORD=
+
+# Supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_KEY=
+SUPABASE_SERVICE_KEY=
+
+# Cache
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+
+# Redis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+# Mail
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.mailtrap.io
+MAIL_PORT=2525
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=info@eduboutique.co.zw
+MAIL_FROM_NAME="${APP_NAME}"
+
+# Odoo
+ODOO_URL=https://your-instance.odoo.com
+ODOO_DATABASE=your-database
+ODOO_USERNAME=
+ODOO_PASSWORD=
+ODOO_API_KEY=
+
+# AWS S3 (or Supabase Storage)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_URL=
+
+# Frontend
+FRONTEND_URL=https://eduboutique.co.zw
+
+# WhatsApp
+WHATSAPP_NUMBER=+263775673510
+```
+
+### B. Filament Plugin Recommendations
+- **filament/spatie-laravel-media-library-plugin**: Advanced media management
+- **filament/spatie-laravel-settings-plugin**: Settings management
+- **filament/spatie-laravel-translatable-plugin**: Multi-language support (future)
+- **bezhansalleh/filament-shield**: Advanced permissions management
+- **jeffgreco13/filament-breezy**: Two-factor authentication
+- **ryangjchandler/filament-navigation**: Navigation builder
+
+### C. Testing Strategy
+- **Unit Tests**: Model logic, services, helpers
+- **Feature Tests**: API endpoints, authentication
+- **Browser Tests**: Admin panel workflows
+- **Integration Tests**: Odoo sync operations
+- **Performance Tests**: Load testing, database queries
+
+### D. Documentation Deliverables
+- API documentation (Postman/Swagger)
+- Admin panel user guide
+- Odoo integration guide
+- Deployment guide
+- Developer documentation
+- Troubleshooting guide
+
+---
+
+## Conclusion
+
+This specification provides a comprehensive blueprint for developing a Laravel Filament-based CMS that seamlessly integrates with both the React frontend and Odoo ERP system. The modular architecture ensures scalability, maintainability, and ease of future enhancements.
+
+The phased development approach allows for iterative delivery and testing, ensuring that each component is thoroughly validated before proceeding to the next phase.
+
+---
+
+**Document Version**: 1.0
+**Last Updated**: October 14, 2025
+**Contact**: Development Team
+**Next Review**: After Phase 1 Completion
