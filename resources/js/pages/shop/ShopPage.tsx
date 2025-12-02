@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { Filter, Search, SlidersHorizontal, Loader2 } from 'lucide-react';
-import { router } from '@inertiajs/react';
+import { router, Head } from '@inertiajs/react';
 import ProductCard from '../../components/product/ProductCard';
 import FilterSidebar from '../../components/common/FilterSidebar';
 import { FilterOptions, Product } from '../../types';
@@ -163,7 +163,9 @@ const ShopPage = ({
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <>
+      <Head title="Shop Textbooks" />
+      <div className="bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="bg-primary-700 text-white py-12">
         <div className="container-custom">
@@ -286,6 +288,7 @@ const ShopPage = ({
         />
       </div>
     </div>
+    </>
   );
 };
 
