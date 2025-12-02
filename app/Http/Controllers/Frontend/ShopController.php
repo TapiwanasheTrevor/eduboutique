@@ -97,7 +97,12 @@ class ShopController extends Controller
         if ($request->filled('subject')) {
             $subjectValues = array_filter((array) $request->subject, fn($v) => $v !== '' && $v !== null);
             if (!empty($subjectValues)) {
-                $query->whereIn('subject', $subjectValues);
+                // Use case-insensitive matching for subjects
+                $query->where(function ($q) use ($subjectValues) {
+                    foreach ($subjectValues as $subject) {
+                        $q->orWhereRaw('LOWER(subject) = ?', [strtolower($subject)]);
+                    }
+                });
             }
         }
 
@@ -158,10 +163,24 @@ class ShopController extends Controller
      */
     private function getFilterOptions(): array
     {
+        // Get subjects and normalize to sentence case, deduplicating case-insensitively
+        $rawSubjects = Product::select('subject')->distinct()->whereNotNull('subject')->where('subject', '!=', '')->pluck('subject')->toArray();
+        $normalizedSubjects = [];
+        $seenLower = [];
+        foreach ($rawSubjects as $subject) {
+            $lower = strtolower($subject);
+            if (!isset($seenLower[$lower])) {
+                // Convert to sentence case (first letter uppercase, rest lowercase)
+                $normalizedSubjects[] = ucfirst($lower);
+                $seenLower[$lower] = true;
+            }
+        }
+        sort($normalizedSubjects);
+
         return [
             'syllabuses' => Product::select('syllabus')->distinct()->whereNotNull('syllabus')->where('syllabus', '!=', '')->orderBy('syllabus')->pluck('syllabus')->toArray(),
             'levels' => Product::select('level')->distinct()->whereNotNull('level')->where('level', '!=', '')->orderBy('level')->pluck('level')->toArray(),
-            'subjects' => Product::select('subject')->distinct()->whereNotNull('subject')->where('subject', '!=', '')->orderBy('subject')->pluck('subject')->toArray(),
+            'subjects' => $normalizedSubjects,
             'authors' => Product::select('author')->distinct()->whereNotNull('author')->where('author', '!=', '')->where('author', '!=', 'Unknown')->orderBy('author')->pluck('author')->toArray(),
             'publishers' => Product::select('publisher')->distinct()->whereNotNull('publisher')->where('publisher', '!=', '')->where('publisher', '!=', 'Unknown')->orderBy('publisher')->pluck('publisher')->toArray(),
         ];

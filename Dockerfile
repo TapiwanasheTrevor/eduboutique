@@ -17,8 +17,8 @@ RUN apk add --no-cache \
     icu-dev \
     libzip-dev
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml intl zip
+# Install PHP extensions (including xmlrpc for Odoo sync)
+RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml intl zip xmlrpc
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -35,8 +35,10 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 # Install npm dependencies and build assets
 RUN npm install && npm run build
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+# Set permissions - www-data needs to read all application files and write to storage/cache
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html \
+    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Copy Nginx config
 COPY docker/nginx.conf /etc/nginx/nginx.conf
