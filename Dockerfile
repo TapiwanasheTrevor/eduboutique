@@ -15,10 +15,14 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     icu-dev \
-    libzip-dev
+    libzip-dev \
+    $PHPIZE_DEPS
 
-# Install PHP extensions (including xmlrpc for Odoo sync)
-RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml intl zip xmlrpc
+# Install PHP extensions
+RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml intl zip
+
+# Install xmlrpc extension via PECL (removed from PHP 8.0+ core)
+RUN pecl install xmlrpc-1.0.0RC3 && docker-php-ext-enable xmlrpc
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
