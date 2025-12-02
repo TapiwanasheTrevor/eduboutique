@@ -49,7 +49,7 @@ class ImportProducts extends Command
                     'description' => $item['description'],
                     'price_zwl' => $item['price_zwl'] ?? 0,
                     'price_usd' => $item['price_usd'] ?? 0,
-                    'category_id' => $item['category_id'],
+                    'category_id' => null, // Skip category_id as it may not match remote DB
                     'syllabus' => $item['syllabus'] ?? 'Other',
                     'level' => $item['level'] ?? 'Primary',
                     'subject' => $item['subject'],
