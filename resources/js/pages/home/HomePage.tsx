@@ -18,8 +18,18 @@ const HomePage = ({ featuredProducts, newArrivals, popularCategories, latestVide
 
   return (
     <div>
-      <section className="bg-gradient-to-br from-primary-600 to-primary-800 text-white min-h-screen flex items-start pt-32">
-        <div className="container-custom">
+      {/* Hero Section with animated background */}
+      <section className="relative text-white h-[calc(100vh-108px)] flex items-end pb-16 overflow-hidden">
+        {/* Animated background image */}
+        <div
+          className="absolute inset-0 w-[120%] h-[120%] -top-[10%] -left-[10%] bg-cover bg-center animate-slow-drift"
+          style={{ backgroundImage: "url('/cover.jpg')" }}
+        />
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-700/90 via-primary-800/85 to-primary-900/90" />
+
+        {/* Content */}
+        <div className="container-custom relative z-10">
           <div>
             <h1 className="text-4xl md:text-6xl font-bold font-serif mb-8">
               Your Source for ZIMSEC & Cambridge Textbooks

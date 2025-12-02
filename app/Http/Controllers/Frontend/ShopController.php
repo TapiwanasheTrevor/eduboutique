@@ -11,41 +11,123 @@ class ShopController extends Controller
 {
     public function index(Request $request)
     {
+        $query = $this->buildProductQuery($request);
+
+        // Pagination - increased default for infinite scroll
+        $perPage = $request->get('per_page', 24);
+        $products = $query->paginate($perPage);
+
+        // Get unique filter values for sidebar (only on initial page load)
+        $filterOptions = $this->getFilterOptions();
+
+        return Inertia::render('shop/ShopPage', [
+            'products' => $products->items(),
+            'total' => $products->total(),
+            'perPage' => $products->perPage(),
+            'currentPage' => $products->currentPage(),
+            'lastPage' => $products->lastPage(),
+            'hasMorePages' => $products->hasMorePages(),
+            'filterOptions' => $filterOptions,
+            'filters' => [
+                'q' => $request->q,
+                'sort' => $request->get('sort', 'featured'),
+                'syllabus' => $request->syllabus,
+                'level' => $request->level,
+                'subject' => $request->subject,
+                'author' => $request->author,
+                'publisher' => $request->publisher,
+            ],
+        ]);
+    }
+
+    /**
+     * API endpoint for infinite scroll - returns JSON
+     */
+    public function loadMore(Request $request)
+    {
+        $query = $this->buildProductQuery($request);
+
+        $perPage = $request->get('per_page', 24);
+        $products = $query->paginate($perPage);
+
+        return response()->json([
+            'products' => $products->items(),
+            'currentPage' => $products->currentPage(),
+            'lastPage' => $products->lastPage(),
+            'hasMorePages' => $products->hasMorePages(),
+            'total' => $products->total(),
+        ]);
+    }
+
+    /**
+     * Build the product query with all filters applied
+     */
+    private function buildProductQuery(Request $request)
+    {
         $query = Product::query()->where('stock_status', '!=', 'out_of_stock');
 
         // Search
         if ($request->has('q') && $request->q) {
             $searchTerm = $request->q;
-            $query->where(function($q) use ($searchTerm) {
+            $query->where(function ($q) use ($searchTerm) {
                 $q->where('title', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%")
-                  ->orWhere('subject', 'like', "%{$searchTerm}%");
+                    ->orWhere('description', 'like', "%{$searchTerm}%")
+                    ->orWhere('subject', 'like', "%{$searchTerm}%")
+                    ->orWhere('author', 'like', "%{$searchTerm}%")
+                    ->orWhere('publisher', 'like', "%{$searchTerm}%")
+                    ->orWhere('level', 'like', "%{$searchTerm}%");
             });
         }
 
-        // Filters
-        if ($request->has('syllabus')) {
-            $query->whereIn('syllabus', (array) $request->syllabus);
+        // Filters - only apply if value is not empty
+        if ($request->filled('syllabus')) {
+            $syllabusValues = array_filter((array) $request->syllabus, fn($v) => $v !== '' && $v !== null);
+            if (!empty($syllabusValues)) {
+                $query->whereIn('syllabus', $syllabusValues);
+            }
         }
 
-        if ($request->has('level')) {
-            $query->whereIn('level', (array) $request->level);
+        if ($request->filled('level')) {
+            $levelValues = array_filter((array) $request->level, fn($v) => $v !== '' && $v !== null);
+            if (!empty($levelValues)) {
+                $query->whereIn('level', $levelValues);
+            }
         }
 
-        if ($request->has('subject')) {
-            $query->whereIn('subject', (array) $request->subject);
+        if ($request->filled('subject')) {
+            $subjectValues = array_filter((array) $request->subject, fn($v) => $v !== '' && $v !== null);
+            if (!empty($subjectValues)) {
+                $query->whereIn('subject', $subjectValues);
+            }
         }
 
-        if ($request->has('price_min')) {
+        if ($request->filled('author')) {
+            $authorValues = array_filter((array) $request->author, fn($v) => $v !== '' && $v !== null);
+            if (!empty($authorValues)) {
+                $query->whereIn('author', $authorValues);
+            }
+        }
+
+        if ($request->filled('publisher')) {
+            $publisherValues = array_filter((array) $request->publisher, fn($v) => $v !== '' && $v !== null);
+            if (!empty($publisherValues)) {
+                $query->whereIn('publisher', $publisherValues);
+            }
+        }
+
+        if ($request->filled('price_min')) {
             $query->where('price_usd', '>=', $request->price_min);
         }
 
-        if ($request->has('price_max')) {
+        if ($request->filled('price_max')) {
             $query->where('price_usd', '<=', $request->price_max);
         }
 
-        if ($request->has('stock_status')) {
-            $query->whereIn('stock_status', (array) $request->stock_status);
+        if ($request->filled('stock_status')) {
+            $stockValues = array_filter((array) $request->stock_status, fn($v) => $v !== '' && $v !== null);
+            if (!empty($stockValues)) {
+                $query->whereIn('stock_status', $stockValues);
+            }
         }
 
         // Sorting
@@ -65,34 +147,23 @@ class ShopController extends Controller
                 break;
             default: // featured
                 $query->orderBy('featured', 'desc')
-                      ->orderBy('created_at', 'desc');
+                    ->orderBy('created_at', 'desc');
         }
 
-        // Pagination
-        $perPage = $request->get('per_page', 12);
-        $products = $query->paginate($perPage);
+        return $query;
+    }
 
-        // Get unique filter values for sidebar
-        $filterOptions = [
-            'syllabuses' => Product::select('syllabus')->distinct()->whereNotNull('syllabus')->pluck('syllabus')->toArray(),
-            'levels' => Product::select('level')->distinct()->whereNotNull('level')->pluck('level')->toArray(),
-            'subjects' => Product::select('subject')->distinct()->whereNotNull('subject')->pluck('subject')->toArray(),
+    /**
+     * Get unique filter options for the sidebar
+     */
+    private function getFilterOptions(): array
+    {
+        return [
+            'syllabuses' => Product::select('syllabus')->distinct()->whereNotNull('syllabus')->where('syllabus', '!=', '')->orderBy('syllabus')->pluck('syllabus')->toArray(),
+            'levels' => Product::select('level')->distinct()->whereNotNull('level')->where('level', '!=', '')->orderBy('level')->pluck('level')->toArray(),
+            'subjects' => Product::select('subject')->distinct()->whereNotNull('subject')->where('subject', '!=', '')->orderBy('subject')->pluck('subject')->toArray(),
+            'authors' => Product::select('author')->distinct()->whereNotNull('author')->where('author', '!=', '')->where('author', '!=', 'Unknown')->orderBy('author')->pluck('author')->toArray(),
+            'publishers' => Product::select('publisher')->distinct()->whereNotNull('publisher')->where('publisher', '!=', '')->where('publisher', '!=', 'Unknown')->orderBy('publisher')->pluck('publisher')->toArray(),
         ];
-
-        return Inertia::render('shop/ShopPage', [
-            'products' => $products->items(),
-            'total' => $products->total(),
-            'perPage' => $products->perPage(),
-            'currentPage' => $products->currentPage(),
-            'lastPage' => $products->lastPage(),
-            'filterOptions' => $filterOptions,
-            'filters' => [
-                'q' => $request->q,
-                'sort' => $sort,
-                'syllabus' => $request->syllabus,
-                'level' => $request->level,
-                'subject' => $request->subject,
-            ],
-        ]);
     }
 }

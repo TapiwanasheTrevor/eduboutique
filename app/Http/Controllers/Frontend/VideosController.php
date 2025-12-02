@@ -19,17 +19,13 @@ class VideosController extends Controller
             $query->where(function($q) use ($searchTerm) {
                 $q->where('title', 'like', "%{$searchTerm}%")
                   ->orWhere('description', 'like', "%{$searchTerm}%")
-                  ->orWhere('subject', 'like', "%{$searchTerm}%");
+                  ->orWhere('category', 'like', "%{$searchTerm}%");
             });
         }
 
         // Filters
-        if ($request->has('level')) {
-            $query->whereIn('level', (array) $request->level);
-        }
-
-        if ($request->has('subject')) {
-            $query->whereIn('subject', (array) $request->subject);
+        if ($request->has('category')) {
+            $query->whereIn('category', (array) $request->category);
         }
 
         // Sorting
@@ -51,8 +47,7 @@ class VideosController extends Controller
 
         // Get unique filter values
         $filterOptions = [
-            'levels' => Video::select('level')->distinct()->whereNotNull('level')->where('published', true)->pluck('level')->toArray(),
-            'subjects' => Video::select('subject')->distinct()->whereNotNull('subject')->where('published', true)->pluck('subject')->toArray(),
+            'categories' => Video::select('category')->distinct()->whereNotNull('category')->where('published', true)->pluck('category')->toArray(),
         ];
 
         return Inertia::render('videos/VideosPage', [
@@ -65,8 +60,7 @@ class VideosController extends Controller
             'filters' => [
                 'q' => $request->q,
                 'sort' => $sort,
-                'level' => $request->level,
-                'subject' => $request->subject,
+                'category' => $request->category,
             ],
         ]);
     }

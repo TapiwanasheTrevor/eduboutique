@@ -26,15 +26,33 @@ const ContactPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitStatus('idle');
 
-    console.log('Contact form submitted:', formData);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('/api/v1/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
 
-    setSubmitStatus('success');
-    setIsSubmitting(false);
-    setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
-
-    setTimeout(() => setSubmitStatus('idle'), 3000);
+      if (response.ok) {
+        setSubmitStatus('success');
+        setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
+        setTimeout(() => setSubmitStatus('idle'), 5000);
+      } else {
+        const data = await response.json();
+        console.error('Contact form error:', data);
+        setSubmitStatus('error');
+      }
+    } catch (error) {
+      console.error('Contact form submission failed:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const whatsappLink = generateWhatsAppLink('Hello! I would like to get in touch with you.');

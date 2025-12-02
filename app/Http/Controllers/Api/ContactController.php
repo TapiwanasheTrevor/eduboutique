@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncContactFormToOdoo;
 use App\Models\ContactForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -43,6 +44,17 @@ class ContactController extends Controller
             'message' => $request->input('message'),
             'status' => 'new',
         ]);
+
+        // Sync to Odoo as a CRM lead
+        try {
+            SyncContactFormToOdoo::dispatch($contactForm);
+        } catch (\Exception $e) {
+            // Log but don't fail the request if sync fails
+            \Log::warning('Failed to dispatch Odoo sync job for contact form', [
+                'contact_form_id' => $contactForm->id,
+                'error' => $e->getMessage()
+            ]);
+        }
 
         return response()->json([
             'data' => [

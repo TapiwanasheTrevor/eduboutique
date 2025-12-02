@@ -175,9 +175,8 @@ class ProductResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\ImageColumn::make('cover_image')
-                    ->square()
-                    ->size(60),
+                Tables\Columns\ViewColumn::make('cover_image')
+                    ->view('filament.tables.columns.cover-image'),
 
                 Tables\Columns\TextColumn::make('title')
                     ->searchable()

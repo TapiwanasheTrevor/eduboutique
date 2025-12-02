@@ -91,6 +91,8 @@ export interface FilterOptions {
   syllabus?: string[];
   level?: string[];
   subject?: string[];
+  author?: string[];
+  publisher?: string[];
   price_min?: number;
   price_max?: number;
   stock_status?: string[];

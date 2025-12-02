@@ -11,9 +11,16 @@ const Footer = () => {
       <div className="container-custom py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div>
-            <h3 className="text-white text-lg font-bold mb-4 font-serif">
-              Edu Boutique Bookstore
-            </h3>
+            <div className="flex items-center gap-3 mb-4">
+              <img
+                src="/logo.png"
+                alt="Edu Boutique"
+                className="h-12 w-auto brightness-0 invert"
+              />
+              <h3 className="text-white text-lg font-bold font-serif">
+                Eduboutique Zimbabwe
+              </h3>
+            </div>
             <p className="text-sm mb-4">{STORE_INFO.tagline}</p>
             <div className="flex space-x-4">
               <a
@@ -99,7 +106,7 @@ const Footer = () => {
       <div className="border-t border-gray-800">
         <div className="container-custom py-6">
           <div className="flex flex-col md:flex-row justify-between items-center text-sm">
-            <p>&copy; {new Date().getFullYear()} Edu Boutique Bookstore. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Eduboutique Zimbabwe. All rights reserved.</p>
             <div className="flex space-x-4 mt-4 md:mt-0">
               <Link href="/privacy" className="hover:text-white transition-colors">
                 Privacy Policy

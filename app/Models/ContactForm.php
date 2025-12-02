@@ -25,6 +25,8 @@ class ContactForm extends Model
         'assigned_to',
         'responded_at',
         'notes',
+        'odoo_lead_id',
+        'odoo_synced_at',
     ];
 
     /**
@@ -34,6 +36,7 @@ class ContactForm extends Model
      */
     protected $casts = [
         'responded_at' => 'datetime',
+        'odoo_synced_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

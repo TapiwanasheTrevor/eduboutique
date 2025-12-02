@@ -137,7 +137,7 @@ class OdooService
     public function create($model, array $data)
     {
         try {
-            $id = $this->models->execute_kw(
+            $result = $this->models->execute_kw(
                 $this->db,
                 $this->uid,
                 $this->password,
@@ -146,6 +146,14 @@ class OdooService
                 [$data]
             );
 
+            // Check if result is an error (Odoo returns fault array on error)
+            if (is_array($result) && isset($result['faultCode'])) {
+                $errorMsg = $result['faultString'] ?? 'Unknown Odoo error';
+                $this->logSync($model, null, 'create', 'to_odoo', 'error', $data, null, $errorMsg);
+                throw new Exception("Odoo error: " . $errorMsg);
+            }
+
+            $id = (int) $result;
             $this->logSync($model, $id, 'create', 'to_odoo', 'success', $data, ['id' => $id]);
 
             Log::info("Created record in Odoo", ['model' => $model, 'id' => $id]);
@@ -253,20 +261,48 @@ class OdooService
     protected function logSync($model, $recordId, $operation, $direction, $status, $requestData, $responseData, $errorMessage = null)
     {
         try {
+            // Sanitize request data to avoid storing large base64 images
+            $sanitizedRequest = $this->sanitizeLogData($requestData);
+            $sanitizedResponse = $this->sanitizeLogData($responseData);
+
             OdooSyncLog::create([
                 'model' => $model,
                 'record_id' => $recordId,
                 'operation' => $operation,
                 'direction' => $direction,
                 'status' => $status,
-                'request_data' => $requestData,
-                'response_data' => $responseData,
+                'request_data' => $sanitizedRequest,
+                'response_data' => $sanitizedResponse,
                 'error_message' => $errorMessage,
                 'synced_at' => now(),
             ]);
         } catch (Exception $e) {
             Log::error('Failed to log Odoo sync: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Sanitize log data to prevent storing large base64 images
+     */
+    protected function sanitizeLogData($data)
+    {
+        if (!is_array($data)) {
+            return $data;
+        }
+
+        $sanitized = [];
+        foreach ($data as $key => $value) {
+            if (is_string($value) && strlen($value) > 1000) {
+                // Truncate large strings (likely base64 images)
+                $sanitized[$key] = '[TRUNCATED: ' . strlen($value) . ' bytes]';
+            } elseif (is_array($value)) {
+                $sanitized[$key] = $this->sanitizeLogData($value);
+            } else {
+                $sanitized[$key] = $value;
+            }
+        }
+
+        return $sanitized;
     }
 
     /**

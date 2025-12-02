@@ -27,6 +27,7 @@ class Product extends Model
         'subject',
         'publisher',
         'isbn',
+        'item_code',
         'author',
         'cover_image',
         'stock_status',

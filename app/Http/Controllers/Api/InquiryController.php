@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inquiry;
+use App\Models\Customer;
+use App\Jobs\SyncInquiryToOdoo;
+use App\Jobs\SyncLeadToOdoo;
+use App\Jobs\SyncCustomerToOdoo;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -47,9 +51,22 @@ class InquiryController extends Controller
         // Generate unique inquiry number
         $inquiryNumber = $this->generateInquiryNumber();
 
-        // Create the inquiry
+        // Find or create customer from inquiry
+        $customer = Customer::firstOrCreate(
+            ['email' => $request->input('customer_email')],
+            [
+                'name' => $request->input('customer_name'),
+                'phone' => $request->input('customer_phone'),
+                'street' => $request->input('delivery_address'),
+                'city' => $request->input('delivery_city'),
+                'source' => 'inquiry',
+            ]
+        );
+
+        // Create the inquiry linked to customer
         $inquiry = Inquiry::create([
             'inquiry_number' => $inquiryNumber,
+            'customer_id' => $customer->id,
             'customer_name' => $request->input('customer_name'),
             'customer_email' => $request->input('customer_email'),
             'customer_phone' => $request->input('customer_phone'),
@@ -62,6 +79,11 @@ class InquiryController extends Controller
             'total_usd' => $request->input('total_usd'),
             'status' => 'pending',
         ]);
+
+        // Automatically sync customer and inquiry to Odoo
+        SyncCustomerToOdoo::dispatch($customer);
+        SyncInquiryToOdoo::dispatch($inquiry);
+        SyncLeadToOdoo::dispatch($inquiry);
 
         return response()->json([
             'data' => [

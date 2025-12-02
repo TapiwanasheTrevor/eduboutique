@@ -17,6 +17,7 @@ class Inquiry extends Model
      */
     protected $fillable = [
         'inquiry_number',
+        'customer_id',
         'customer_name',
         'customer_email',
         'customer_phone',
@@ -29,6 +30,7 @@ class Inquiry extends Model
         'total_usd',
         'status',
         'odoo_order_id',
+        'odoo_lead_id',
         'odoo_synced_at',
         'assigned_to',
         'notes',
@@ -54,5 +56,13 @@ class Inquiry extends Model
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * Get the customer for this inquiry.
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 }

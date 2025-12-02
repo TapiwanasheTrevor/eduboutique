@@ -12,14 +12,12 @@ interface VideosPageProps {
   currentPage: number;
   lastPage: number;
   filterOptions: {
-    levels: string[];
-    subjects: string[];
+    categories: string[];
   };
   filters: {
     q?: string;
     sort?: string;
-    level?: string[];
-    subject?: string[];
+    category?: string[];
   };
 }
 
@@ -139,10 +137,9 @@ const VideosPage = ({ videos, total, perPage, currentPage, lastPage, filterOptio
                       {video.description && (
                         <p className="text-gray-600 text-sm line-clamp-2 mb-3">{video.description}</p>
                       )}
-                      {video.level && video.subject && (
+                      {video.category && (
                         <div className="flex gap-2 mb-3">
-                          <span className="text-xs bg-gray-100 px-2 py-1 rounded">{video.level}</span>
-                          <span className="text-xs bg-gray-100 px-2 py-1 rounded">{video.subject}</span>
+                          <span className="text-xs bg-gray-100 px-2 py-1 rounded">{video.category}</span>
                         </div>
                       )}
                       <a

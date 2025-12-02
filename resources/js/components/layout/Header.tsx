@@ -27,10 +27,17 @@ const Header = () => {
 
       <nav className="container-custom py-4">
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center">
-            <h1 className="text-2xl md:text-3xl font-serif font-bold text-primary-700">
-              Edu Boutique Bookstore
-            </h1>
+          <Link href="/" className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Edu Boutique"
+              className="h-12 md:h-14 w-auto"
+            />
+            <div className="hidden sm:block">
+              <h1 className="text-xl md:text-2xl font-bold text-primary-700 tracking-wide">
+                Eduboutique Zimbabwe
+              </h1>
+            </div>
           </Link>
 
           <div className="hidden lg:flex items-center space-x-8">

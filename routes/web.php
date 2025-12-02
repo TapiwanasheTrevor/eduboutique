@@ -15,6 +15,7 @@ Route::get('/about', function () {
 })->name('about');
 
 Route::get('/shop', [ShopController::class, 'index'])->name('shop');
+Route::get('/api/shop/products', [ShopController::class, 'loadMore'])->name('shop.loadMore');
 
 Route::get('/product/{slug}', [ProductController::class, 'show'])->name('product.detail');
 
@@ -27,6 +28,10 @@ Route::get('/contact', function () {
 Route::get('/cart', function () {
     return Inertia::render('cart/CartPage');
 })->name('cart');
+
+Route::get('/checkout', function () {
+    return Inertia::render('checkout/CheckoutPage');
+})->name('checkout');
 
 // Authenticated Routes
 Route::middleware(['auth', 'verified'])->group(function () {

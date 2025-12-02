@@ -158,6 +158,15 @@ class ContactFormResource extends Resource
                     ->sortable()
                     ->since()
                     ->tooltip(fn ($record) => $record->created_at->format('M d, Y g:i A')),
+
+                Tables\Columns\IconColumn::make('odoo_lead_id')
+                    ->label('Odoo')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->tooltip(fn ($record) => $record->odoo_lead_id ? "Lead ID: {$record->odoo_lead_id}" : 'Not synced'),
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
@@ -182,6 +191,31 @@ class ContactFormResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+
+                Tables\Actions\Action::make('sync_to_odoo')
+                    ->label('Sync to Odoo')
+                    ->icon('heroicon-o-arrow-path')
+                    ->action(function (ContactForm $record) {
+                        try {
+                            \App\Jobs\SyncContactFormToOdoo::dispatchSync($record);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Synced to Odoo')
+                                ->body('Contact form synced to Odoo CRM as a lead.')
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Sync failed')
+                                ->body('Failed to sync: ' . $e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->requiresConfirmation()
+                    ->visible(fn ($record) => !$record->odoo_lead_id)
+                    ->color('warning'),
+
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([

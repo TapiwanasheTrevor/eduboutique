@@ -36,7 +36,10 @@
       "Bash(npm run build:*)",
       "Bash(flyctl secrets unset:*)",
       "Bash(flyctl ssh console:*)",
-      "Bash(flyctl machine restart:*)"
+      "Bash(flyctl machine restart:*)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(composer show:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
