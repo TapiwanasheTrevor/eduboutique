@@ -39,7 +39,11 @@
       "Bash(flyctl machine restart:*)",
       "Bash(source ~/.nvm/nvm.sh)",
       "Bash(composer show:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(/opt/lampp/bin/mysql:*)"
     ],
     "deny": [],
     "ask": []
