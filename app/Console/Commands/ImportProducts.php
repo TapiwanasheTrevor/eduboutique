@@ -9,12 +9,13 @@ use Illuminate\Support\Facades\DB;
 
 class ImportProducts extends Command
 {
-    protected $signature = 'products:import {file : Path to JSON file}';
-    protected $description = 'Import products from JSON file (upsert based on ID)';
+    protected $signature = 'products:import {file : Path to JSON file} {--force : Force overwrite all products}';
+    protected $description = 'Import products from JSON file (upsert based on slug)';
 
     public function handle()
     {
         $file = $this->argument('file');
+        $force = $this->option('force');
 
         if (!file_exists($file)) {
             $this->error("File not found: {$file}");
@@ -37,66 +38,60 @@ class ImportProducts extends Command
         $updated = 0;
         $errors = 0;
 
-        DB::beginTransaction();
+        foreach ($data as $item) {
+            try {
+                // Try to find by slug first (more reliable than ID since IDs may differ)
+                $existing = Product::where('slug', $item['slug'])->first();
 
-        try {
-            foreach ($data as $item) {
-                try {
-                    $existing = Product::find($item['id']);
+                $productData = [
+                    'title' => $item['title'],
+                    'slug' => $item['slug'],
+                    'description' => $item['description'],
+                    'price_zwl' => $item['price_zwl'] ?? 0,
+                    'price_usd' => $item['price_usd'] ?? 0,
+                    'category_id' => $item['category_id'],
+                    'syllabus' => $item['syllabus'] ?? 'Other',
+                    'level' => $item['level'] ?? 'Primary',
+                    'subject' => $item['subject'],
+                    'publisher' => $item['publisher'],
+                    'isbn' => $item['isbn'],
+                    'item_code' => $item['item_code'],
+                    'author' => $item['author'],
+                    'cover_image' => $item['cover_image'],
+                    'stock_status' => $item['stock_status'] ?? 'in_stock',
+                    'stock_quantity' => $item['stock_quantity'] ?? 0,
+                    'featured' => $item['featured'] ?? false,
+                ];
 
-                    $productData = [
-                        'id' => $item['id'],
-                        'title' => $item['title'],
-                        'slug' => $item['slug'],
-                        'description' => $item['description'],
-                        'price_zwl' => $item['price_zwl'] ?? 0,
-                        'price_usd' => $item['price_usd'] ?? 0,
-                        'category_id' => $item['category_id'],
-                        'syllabus' => $item['syllabus'] ?? 'Other',
-                        'level' => $item['level'] ?? 'Primary',
-                        'subject' => $item['subject'],
-                        'publisher' => $item['publisher'],
-                        'isbn' => $item['isbn'],
-                        'item_code' => $item['item_code'],
-                        'author' => $item['author'],
-                        'cover_image' => $item['cover_image'],
-                        'stock_status' => $item['stock_status'] ?? 'in_stock',
-                        'stock_quantity' => $item['stock_quantity'] ?? 0,
-                        'featured' => $item['featured'] ?? false,
-                    ];
-
-                    if ($existing) {
+                if ($existing) {
+                    // Only update if force flag is set or if local data has more info
+                    if ($force || ($existing->price_usd == 0 && $item['price_usd'] > 0)) {
                         $existing->update($productData);
                         $updated++;
-                    } else {
-                        Product::create($productData);
-                        $imported++;
                     }
-                } catch (\Exception $e) {
-                    $this->newLine();
-                    $this->warn("Error importing {$item['title']}: " . $e->getMessage());
-                    $errors++;
+                } else {
+                    // Create new product with the original ID if possible
+                    $productData['id'] = $item['id'];
+                    Product::create($productData);
+                    $imported++;
                 }
-
-                $bar->advance();
+            } catch (\Exception $e) {
+                $this->newLine();
+                $this->warn("Error importing {$item['title']}: " . $e->getMessage());
+                $errors++;
             }
 
-            DB::commit();
-
-            $bar->finish();
-            $this->newLine(2);
-
-            $this->info("Import complete!");
-            $this->info("  - New products: {$imported}");
-            $this->info("  - Updated: {$updated}");
-            $this->info("  - Errors: {$errors}");
-
-            return 0;
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            $this->error("Import failed: " . $e->getMessage());
-            return 1;
+            $bar->advance();
         }
+
+        $bar->finish();
+        $this->newLine(2);
+
+        $this->info("Import complete!");
+        $this->info("  - New products: {$imported}");
+        $this->info("  - Updated: {$updated}");
+        $this->info("  - Errors: {$errors}");
+
+        return 0;
     }
 }

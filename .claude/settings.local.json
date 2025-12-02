@@ -43,7 +43,10 @@
       "Bash(git config:*)",
       "Bash(curl:*)",
       "Bash(cat:*)",
-      "Bash(/opt/lampp/bin/mysql:*)"
+      "Bash(/opt/lampp/bin/mysql:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(flyctl ssh sftp shell:*)"
     ],
     "deny": [],
     "ask": []
