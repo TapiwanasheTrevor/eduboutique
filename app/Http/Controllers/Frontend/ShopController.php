@@ -97,10 +97,24 @@ class ShopController extends Controller
         if ($request->filled('subject')) {
             $subjectValues = array_filter((array) $request->subject, fn($v) => $v !== '' && $v !== null);
             if (!empty($subjectValues)) {
-                // Use case-insensitive matching for subjects
+                // Match subjects case-insensitively, also matching variations:
+                // "and" with "&", "and" with ", " (comma)
                 $query->where(function ($q) use ($subjectValues) {
                     foreach ($subjectValues as $subject) {
-                        $q->orWhereRaw('LOWER(subject) = ?', [strtolower($subject)]);
+                        $lowerSubject = strtolower($subject);
+                        $q->orWhereRaw('LOWER(subject) = ?', [$lowerSubject]);
+
+                        // Variant: "and" -> "&"
+                        $ampersandVariant = str_replace(' and ', ' & ', $lowerSubject);
+                        if ($ampersandVariant !== $lowerSubject) {
+                            $q->orWhereRaw('LOWER(subject) = ?', [$ampersandVariant]);
+                        }
+
+                        // Variant: "and" -> ", " (for two-part subjects)
+                        $commaVariant = str_replace(' and ', ', ', $lowerSubject);
+                        if ($commaVariant !== $lowerSubject) {
+                            $q->orWhereRaw('LOWER(subject) = ?', [$commaVariant]);
+                        }
                     }
                 });
             }
@@ -159,20 +173,51 @@ class ShopController extends Controller
     }
 
     /**
+     * Normalize a subject string for consistent display and deduplication
+     * - Converts & to "and"
+     * - Converts ", " (comma followed by space and no "and") to " and "
+     * - Normalizes whitespace
+     * - Converts to title case
+     */
+    private function normalizeSubject(string $subject): string
+    {
+        // Replace & with "and"
+        $normalized = str_replace('&', 'and', $subject);
+
+        // Normalize multiple spaces to single space
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+
+        // Replace ", " with " and " when it separates two topics (not a list with "and")
+        // Only if the subject doesn't already contain " and "
+        $parts = explode(', ', $normalized);
+        if (count($parts) === 2 && stripos($normalized, ' and ') === false) {
+            $normalized = implode(' and ', $parts);
+        }
+
+        // Trim and convert to lowercase for consistent processing
+        $normalized = strtolower(trim($normalized));
+
+        // Convert to title case (capitalize first letter of each word)
+        $normalized = ucwords($normalized);
+
+        return $normalized;
+    }
+
+    /**
      * Get unique filter options for the sidebar
      */
     private function getFilterOptions(): array
     {
-        // Get subjects and normalize to sentence case, deduplicating case-insensitively
+        // Get subjects and normalize, deduplicating after normalization
         $rawSubjects = Product::select('subject')->distinct()->whereNotNull('subject')->where('subject', '!=', '')->pluck('subject')->toArray();
         $normalizedSubjects = [];
-        $seenLower = [];
+        $seen = [];
         foreach ($rawSubjects as $subject) {
-            $lower = strtolower($subject);
-            if (!isset($seenLower[$lower])) {
-                // Convert to sentence case (first letter uppercase, rest lowercase)
-                $normalizedSubjects[] = ucfirst($lower);
-                $seenLower[$lower] = true;
+            $normalized = $this->normalizeSubject($subject);
+            $key = strtolower($normalized);
+            if (!isset($seen[$key]) && $normalized !== 'Unknown') {
+                $normalizedSubjects[] = $normalized;
+                $seen[$key] = true;
             }
         }
         sort($normalizedSubjects);
