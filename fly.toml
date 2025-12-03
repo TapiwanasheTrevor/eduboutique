@@ -5,7 +5,7 @@ primary_region = "jnb"
 
 [env]
   APP_ENV = "production"
-  APP_URL = "https://eduboutique.fly.dev"
+  APP_URL = "https://eduboutique.co.zw"
   LOG_CHANNEL = "stderr"
   LOG_LEVEL = "info"
   LOG_STDERR_FORMATTER = "Monolog\\\\Formatter\\\\JsonFormatter"
