@@ -46,7 +46,14 @@
       "Bash(/opt/lampp/bin/mysql:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(flyctl ssh sftp shell:*)"
+      "Bash(flyctl ssh sftp shell:*)",
+      "Bash(flyctl certs list:*)",
+      "Bash(flyctl certs add:*)",
+      "Bash(flyctl releases:*)",
+      "Bash(tee:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -11,6 +11,7 @@ return [
         'products_interval' => env('ODOO_SYNC_PRODUCTS_INTERVAL', 30),
         'orders_interval' => env('ODOO_SYNC_ORDERS_INTERVAL', 5),
         'stock_interval' => env('ODOO_SYNC_STOCK_INTERVAL', 15),
+        'jobs_interval' => env('ODOO_SYNC_JOBS_INTERVAL', 60),
     ],
 
     'models' => [
@@ -18,5 +19,6 @@ return [
         'category' => 'product.category',
         'order' => 'sale.order',
         'partner' => 'res.partner',
+        'job' => 'hr.job',
     ],
 ];

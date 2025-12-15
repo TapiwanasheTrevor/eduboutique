@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\Frontend\CareersController;
 use App\Http\Controllers\Frontend\HomeController;
 use App\Http\Controllers\Frontend\ShopController;
 use App\Http\Controllers\Frontend\ProductController;
@@ -20,6 +21,9 @@ Route::get('/api/shop/products', [ShopController::class, 'loadMore'])->name('sho
 Route::get('/product/{slug}', [ProductController::class, 'show'])->name('product.detail');
 
 Route::get('/videos', [VideosController::class, 'index'])->name('videos');
+
+Route::get('/careers', [CareersController::class, 'index'])->name('careers');
+Route::get('/careers/{slug}', [CareersController::class, 'show'])->name('careers.show');
 
 Route::get('/contact', function () {
     return Inertia::render('contact/ContactPage');

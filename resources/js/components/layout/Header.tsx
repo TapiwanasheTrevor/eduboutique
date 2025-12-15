@@ -84,6 +84,10 @@ const Header = () => {
               Videos
             </Link>
 
+            <Link href="/careers" className="text-gray-700 hover:text-primary-600 font-medium transition-colors">
+              Careers
+            </Link>
+
             <Link href="/contact" className="text-gray-700 hover:text-primary-600 font-medium transition-colors">
               Contact
             </Link>
@@ -127,6 +131,9 @@ const Header = () => {
               </Link>
               <Link href="/videos" className="text-gray-700 hover:text-primary-600 font-medium" onClick={toggleMenu}>
                 Videos
+              </Link>
+              <Link href="/careers" className="text-gray-700 hover:text-primary-600 font-medium" onClick={toggleMenu}>
+                Careers
               </Link>
               <Link href="/contact" className="text-gray-700 hover:text-primary-600 font-medium" onClick={toggleMenu}>
                 Contact

@@ -87,6 +87,26 @@ export interface Video {
   updated_at: string;
 }
 
+export interface JobPosting {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string;
+  requirements?: string;
+  department?: string;
+  location?: string;
+  employment_type: 'full_time' | 'part_time' | 'contract' | 'internship';
+  experience_level?: string;
+  salary_min?: number;
+  salary_max?: number;
+  salary_currency: string;
+  is_active: boolean;
+  published_at?: string;
+  deadline?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FilterOptions {
   syllabus?: string[];
   level?: string[];

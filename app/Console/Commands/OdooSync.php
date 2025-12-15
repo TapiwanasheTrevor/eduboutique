@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\OdooService;
 use App\Services\OdooSyncService;
 use App\Services\CustomerSyncService;
+use App\Services\JobSyncService;
 use Illuminate\Console\Command;
 
 class OdooSync extends Command
@@ -15,7 +16,7 @@ class OdooSync extends Command
      * @var string
      */
     protected $signature = 'odoo:sync
-                            {--type=all : Type of sync (all, products, stock, push, pull, customers, status)}
+                            {--type=all : Type of sync (all, products, stock, push, pull, customers, jobs, status)}
                             {--strategy=newest_wins : Conflict strategy (odoo_wins, local_wins, newest_wins)}';
 
     /**
@@ -53,14 +54,17 @@ class OdooSync extends Command
             $customerSyncService = new CustomerSyncService($odoo);
             $customerSyncService->setConflictStrategy($strategy);
 
+            $jobSyncService = new JobSyncService($odoo);
+
             $stats = match ($type) {
                 'products' => $this->syncProducts($productSyncService),
                 'stock' => $this->syncStock($productSyncService),
                 'push' => $this->pushToOdoo($productSyncService),
                 'pull' => $this->pullFromOdoo($productSyncService),
                 'customers' => $this->syncCustomers($customerSyncService),
-                'status' => $this->showStatus($productSyncService, $customerSyncService),
-                default => $this->syncAll($productSyncService, $customerSyncService),
+                'jobs' => $this->syncJobs($jobSyncService),
+                'status' => $this->showStatus($productSyncService, $customerSyncService, $jobSyncService),
+                default => $this->syncAll($productSyncService, $customerSyncService, $jobSyncService),
             };
 
             $this->newLine();
@@ -129,9 +133,18 @@ class OdooSync extends Command
     }
 
     /**
+     * Sync job postings from Odoo
+     */
+    protected function syncJobs(JobSyncService $syncService): array
+    {
+        $this->info('Syncing job postings from Odoo...');
+        return $syncService->syncJobPostings();
+    }
+
+    /**
      * Show sync status
      */
-    protected function showStatus(OdooSyncService $productSync, CustomerSyncService $customerSync): array
+    protected function showStatus(OdooSyncService $productSync, CustomerSyncService $customerSync, JobSyncService $jobSync): array
     {
         $this->info('Current Sync Status:');
         $this->newLine();
@@ -166,13 +179,27 @@ class OdooSync extends Command
             ]
         );
 
-        return array_merge($productStatus, $customerStatus);
+        $jobStatus = $jobSync->getSyncStatus();
+
+        $this->newLine();
+        $this->info('Job Postings:');
+        $this->table(
+            ['Metric', 'Value'],
+            [
+                ['Total Jobs', $jobStatus['total_jobs']],
+                ['Active Jobs', $jobStatus['active_jobs']],
+                ['Synced with Odoo', $jobStatus['synced_jobs']],
+                ['Last Sync', $jobStatus['last_sync'] ?? 'Never'],
+            ]
+        );
+
+        return array_merge($productStatus, $customerStatus, $jobStatus);
     }
 
     /**
      * Full sync (all data types)
      */
-    protected function syncAll(OdooSyncService $productSync, CustomerSyncService $customerSync): array
+    protected function syncAll(OdooSyncService $productSync, CustomerSyncService $customerSync, JobSyncService $jobSync): array
     {
         $this->info('Running full bidirectional sync...');
         $this->newLine();
@@ -200,6 +227,15 @@ class OdooSync extends Command
         $customerStats = $customerSync->syncCustomers();
         $allStats['customers_pulled'] = $customerStats['pulled'];
         $allStats['customers_pushed'] = $customerStats['pushed'];
+
+        $this->newLine();
+
+        // Sync job postings
+        $this->info('Step 4: Syncing job postings...');
+        $jobStats = $jobSync->syncJobPostings();
+        $allStats['jobs_synced'] = $jobStats['synced'];
+        $allStats['jobs_created'] = $jobStats['created'];
+        $allStats['jobs_updated'] = $jobStats['updated'];
 
         return $allStats;
     }

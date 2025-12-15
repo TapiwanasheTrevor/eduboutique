@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\InquiryController;
+use App\Http\Controllers\Api\JobPostingController;
 use App\Http\Controllers\Api\NewsletterController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SettingController;
@@ -47,5 +48,10 @@ Route::prefix('v1')->group(function () {
 
     // Settings Endpoints
     Route::get('/settings', [SettingController::class, 'index'])->name('api.settings.index');
+
+    // Job Postings Endpoints
+    Route::get('/jobs', [JobPostingController::class, 'index'])->name('api.jobs.index');
+    Route::get('/jobs/departments', [JobPostingController::class, 'departments'])->name('api.jobs.departments');
+    Route::get('/jobs/{slug}', [JobPostingController::class, 'show'])->name('api.jobs.show');
 
 });
