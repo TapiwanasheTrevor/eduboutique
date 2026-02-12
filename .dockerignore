@@ -1,4 +1,4 @@
-/node_modules
+**/node_modules
 /public/hot
 /public/storage
 /storage/*.key
@@ -12,6 +12,10 @@ npm-debug.log
 yarn-error.log
 /.idea
 /.vscode
+/.claude
 /database/database.sqlite
 .DS_Store
 /tests
+*.xlsx
+*.log
+.git
