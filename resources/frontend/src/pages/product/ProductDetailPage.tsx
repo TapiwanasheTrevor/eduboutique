@@ -69,7 +69,7 @@ const ProductDetailPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-12">
           <div>
             <img
-              src={product.cover_image}
+              src={product.cover_image_url || product.cover_image}
               alt={product.title}
               className="w-full h-auto rounded-lg shadow-lg"
             />

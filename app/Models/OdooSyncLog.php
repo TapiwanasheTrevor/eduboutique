@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 
 class OdooSyncLog extends Model
 {
+    use MassPrunable;
+
     /**
      * Indicates if the model should be timestamped.
      *
@@ -40,4 +43,12 @@ class OdooSyncLog extends Model
         'response_data' => 'array',
         'synced_at' => 'datetime',
     ];
+
+    /**
+     * Get the prunable model query — keep only 7 days of logs.
+     */
+    public function prunable()
+    {
+        return static::where('synced_at', '<', now()->subDays(7));
+    }
 }

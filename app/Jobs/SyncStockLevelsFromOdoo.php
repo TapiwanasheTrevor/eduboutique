@@ -31,32 +31,34 @@ class SyncStockLevelsFromOdoo implements ShouldQueue
         try {
             Log::info('Starting stock levels sync from Odoo');
 
-            // Get all products that have odoo_product_id
-            $products = Product::whereNotNull('odoo_product_id')->get();
+            $totalCount = Product::whereNotNull('odoo_product_id')->count();
 
-            Log::info('Found ' . $products->count() . ' products to sync stock levels');
+            Log::info('Found ' . $totalCount . ' products to sync stock levels');
 
             $successCount = 0;
             $failCount = 0;
 
-            foreach ($products as $product) {
-                try {
-                    $this->syncStockLevel($odoo, $product);
-                    $successCount++;
-                } catch (\Exception $e) {
-                    $failCount++;
-                    Log::error('Failed to sync stock level for product: ' . $product->title, [
-                        'product_id' => $product->id,
-                        'odoo_product_id' => $product->odoo_product_id,
-                        'error' => $e->getMessage()
-                    ]);
+            // Process in chunks to avoid loading all products into memory
+            Product::whereNotNull('odoo_product_id')->chunk(100, function ($products) use ($odoo, &$successCount, &$failCount) {
+                foreach ($products as $product) {
+                    try {
+                        $this->syncStockLevel($odoo, $product);
+                        $successCount++;
+                    } catch (\Exception $e) {
+                        $failCount++;
+                        Log::error('Failed to sync stock level for product: ' . $product->title, [
+                            'product_id' => $product->id,
+                            'odoo_product_id' => $product->odoo_product_id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
                 }
-            }
+            });
 
             Log::info('Stock levels sync completed', [
                 'success' => $successCount,
                 'failed' => $failCount,
-                'total' => $products->count()
+                'total' => $totalCount
             ]);
 
         } catch (\Exception $e) {

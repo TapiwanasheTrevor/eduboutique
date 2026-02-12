@@ -130,9 +130,13 @@ class SyncInquiryToOdoo implements ShouldQueue
         try {
             $orderLines = [];
 
+            // Batch fetch all products to avoid N+1 queries
+            $productIds = collect($this->inquiry->cart_items)->pluck('product_id')->unique()->values()->all();
+            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
             // Map cart items to Odoo order line format
             foreach ($this->inquiry->cart_items as $item) {
-                $product = Product::find($item['product_id']);
+                $product = $products->get($item['product_id']);
 
                 if ($product && $product->odoo_product_id) {
                     // Odoo order line format: [0, 0, {values}]

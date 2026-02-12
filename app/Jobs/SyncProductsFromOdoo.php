@@ -32,17 +32,16 @@ class SyncProductsFromOdoo implements ShouldQueue
         try {
             Log::info('Starting product sync from Odoo');
 
-            // Search for products where sale_ok = true
+            // No need to fetch image_1920 — images are served directly from Odoo
             $products = $odoo->search(
                 'product.product',
-                [['sale_ok', '=', true]], // Only products available for sale
+                [['sale_ok', '=', true]],
                 [
                     'name',
                     'default_code',
                     'list_price',
                     'qty_available',
                     'description_sale',
-                    'image_1920',
                     'categ_id',
                 ]
             );
@@ -84,11 +83,6 @@ class SyncProductsFromOdoo implements ShouldQueue
                 ]
             );
 
-            // Handle image sync if needed
-            if (isset($odooProduct['image_1920']) && !empty($odooProduct['image_1920'])) {
-                $this->syncProductImage($product, $odooProduct['image_1920']);
-            }
-
             Log::info('Synced product: ' . $product->title, [
                 'product_id' => $product->id,
                 'odoo_product_id' => $odooProduct['id']
@@ -116,39 +110,5 @@ class SyncProductsFromOdoo implements ShouldQueue
         }
 
         return 'out_of_stock';
-    }
-
-    /**
-     * Sync product image from Odoo.
-     */
-    protected function syncProductImage(Product $product, string $base64Image): void
-    {
-        try {
-            // Decode base64 image
-            $imageData = base64_decode($base64Image);
-
-            if ($imageData === false) {
-                Log::warning('Failed to decode image for product: ' . $product->title);
-                return;
-            }
-
-            // Generate unique filename
-            $filename = 'products/' . $product->slug . '-' . time() . '.jpg';
-
-            // Store the image
-            \Storage::disk('public')->put($filename, $imageData);
-
-            // Update product with image path
-            $product->update([
-                'cover_image' => $filename
-            ]);
-
-            Log::info('Synced image for product: ' . $product->title);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to sync image for product: ' . $product->title, [
-                'error' => $e->getMessage()
-            ]);
-        }
     }
 }

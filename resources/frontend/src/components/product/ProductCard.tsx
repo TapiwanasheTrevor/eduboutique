@@ -23,7 +23,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
     <Link to={`/product/${product.slug}`} className="card group hover:shadow-hover transition-shadow">
       <div className="relative overflow-hidden">
         <img
-          src={product.cover_image}
+          src={product.cover_image_url || product.cover_image}
           alt={product.title}
           className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
         />

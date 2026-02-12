@@ -14,6 +14,7 @@ export interface Product {
   isbn?: string;
   author?: string;
   cover_image: string;
+  cover_image_url: string | null;
   stock_status: 'in_stock' | 'low_stock' | 'out_of_stock';
   stock_quantity: number;
   featured: boolean;

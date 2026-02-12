@@ -23,8 +23,14 @@ Schedule::job(new SyncStockLevelsFromOdoo())
     ->onOneServer()
     ->withoutOverlapping();
 
-// Cleanup old sync logs (keep 30 days)
+// Cleanup old sync logs (keep 7 days)
 Schedule::command('model:prune', ['--model' => 'App\\Models\\OdooSyncLog'])
     ->daily()
     ->at('02:00')
     ->name('cleanup-old-sync-logs');
+
+// Cleanup old failed jobs (keep 7 days)
+Schedule::command('queue:prune-failed', ['--hours' => 168])
+    ->daily()
+    ->at('02:15')
+    ->name('cleanup-failed-jobs');

@@ -61,8 +61,10 @@ class SyncProductToOdoo implements ShouldQueue
                 }
             }
 
-            // Sync product image if available
-            if ($this->product->cover_image) {
+            // Only sync image if it's a local file (not an Odoo URL)
+            // Odoo-sourced products already have their images in Odoo
+            $coverImage = $this->product->cover_image;
+            if ($coverImage && !str_starts_with($coverImage, 'http')) {
                 $imageBase64 = $this->getImageBase64();
                 if ($imageBase64) {
                     $productData['image_1920'] = $imageBase64;

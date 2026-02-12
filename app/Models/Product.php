@@ -5,10 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
     use HasUuids;
+
+    protected $appends = ['cover_image_url'];
 
     /**
      * The attributes that are mass assignable.
@@ -51,6 +54,33 @@ class Product extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /**
+     * Get the resolved image URL.
+     * - Odoo products: serve from Odoo directly (no local storage needed)
+     * - Local uploads: serve from Laravel storage
+     */
+    public function getCoverImageUrlAttribute(): ?string
+    {
+        $image = $this->cover_image;
+
+        // Already a full URL (e.g. previously stored Odoo URL)
+        if ($image && str_starts_with($image, 'http')) {
+            return $image;
+        }
+
+        // Local file uploaded via Filament
+        if ($image && Storage::disk('public')->exists($image)) {
+            return Storage::disk('public')->url($image);
+        }
+
+        // Odoo-synced product — serve image from Odoo directly
+        if ($this->odoo_product_id) {
+            return 'https://eduboutique.odoo.com/web/image/product.product/' . $this->odoo_product_id . '/image_1920';
+        }
+
+        return null;
+    }
 
     /**
      * Get the category that owns the product.
