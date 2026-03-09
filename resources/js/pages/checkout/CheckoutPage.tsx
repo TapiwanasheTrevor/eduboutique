@@ -44,7 +44,7 @@ const CheckoutPage = () => {
           isbn: item.product.isbn || '',
           sku: item.product.sku || '',
           author: item.product.author || '',
-          cover_image: item.product.cover_image || '',
+          cover_image: item.product.cover_image_url || item.product.cover_image || '',
           quantity: item.quantity,
           price_zwl: item.product.price_zwl,
           price_usd: item.product.price_usd,
@@ -291,7 +291,7 @@ const CheckoutPage = () => {
                 {cart.items.map((item) => (
                   <div key={item.product.id} className="flex gap-3">
                     <img
-                      src={item.product.cover_image}
+                      src={item.product.cover_image_url || item.product.cover_image || '/images/placeholder-book.svg'}
                       alt={item.product.title}
                       className="w-12 h-16 object-cover rounded"
                     />

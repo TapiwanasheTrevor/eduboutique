@@ -23,9 +23,15 @@ const ProductCard = ({ product }: ProductCardProps) => {
     <Link href={`/product/${product.slug}`} className="card group hover:shadow-hover transition-shadow">
       <div className="relative overflow-hidden">
         <img
-          src={product.cover_image}
+          src={product.cover_image_url || product.cover_image || '/images/placeholder-book.svg'}
           alt={product.title}
           className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            if (target.src !== '/images/placeholder-book.svg') {
+              target.src = '/images/placeholder-book.svg';
+            }
+          }}
         />
         <div className="absolute top-2 left-2 flex flex-col gap-2">
           <span className={`px-2 py-1 rounded text-xs font-semibold ${getSyllabusBadgeColor(product.syllabus)}`}>

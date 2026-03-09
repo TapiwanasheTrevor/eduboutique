@@ -41,7 +41,7 @@ const CartPage = () => {
               <div key={item.product.id} className="card p-4">
                 <div className="flex gap-4">
                   <img
-                    src={item.product.cover_image}
+                    src={item.product.cover_image_url || item.product.cover_image || '/images/placeholder-book.svg'}
                     alt={item.product.title}
                     className="w-24 h-32 object-cover rounded"
                   />

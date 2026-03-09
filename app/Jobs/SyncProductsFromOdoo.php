@@ -112,15 +112,20 @@ class SyncProductsFromOdoo implements ShouldQueue
                 $slug = $slug . '-' . $odooProduct['id'];
             }
 
+            $name = $odooProduct['name'];
+            $categName = is_array($odooProduct['categ_id'] ?? false) ? ($odooProduct['categ_id'][1] ?? '') : '';
+
             $product = Product::updateOrCreate(
                 ['odoo_product_id' => $odooProduct['id']],
                 [
-                    'title' => $odooProduct['name'],
+                    'title' => $name,
                     'slug' => $slug,
                     'price_usd' => $odooProduct['list_price'] ?? 0,
                     'stock_quantity' => $odooProduct['qty_available'] ?? 0,
                     'stock_status' => $this->determineStockStatus($odooProduct['qty_available'] ?? 0),
                     'description' => $odooProduct['description_sale'] ?? '',
+                    'syllabus' => $this->detectSyllabus($name),
+                    'level' => $this->detectLevel($name, $categName),
                     'odoo_synced_at' => now(),
                 ]
             );
@@ -152,5 +157,95 @@ class SyncProductsFromOdoo implements ShouldQueue
         }
 
         return 'out_of_stock';
+    }
+
+    /**
+     * Detect syllabus from product name.
+     */
+    protected function detectSyllabus(string $name): string
+    {
+        $lower = strtolower($name);
+
+        if (str_contains($lower, 'cambridge') || str_contains($lower, 'igcse')) {
+            return 'Cambridge';
+        }
+
+        if (str_contains($lower, 'zimsec')) {
+            return 'ZIMSEC';
+        }
+
+        // Common Cambridge publishers/series
+        $cambridgeKeywords = ['oxford', 'longman', 'hodder', 'collins', 'edexcel', 'cie'];
+        foreach ($cambridgeKeywords as $keyword) {
+            if (str_contains($lower, $keyword)) {
+                return 'Cambridge';
+            }
+        }
+
+        // Common ZIMSEC publishers/series
+        $zimsecKeywords = [
+            'step ahead', 'pepukai', 'nhaka', 'zph', 'mambo', 'priority',
+            'gramsol', 'ventures', 'plusone', 'plus one', 'turn-up', 'turn up',
+            'cps ', 'asifunde', 'new trends', 'new general math',
+        ];
+        foreach ($zimsecKeywords as $keyword) {
+            if (str_contains($lower, $keyword)) {
+                return 'ZIMSEC';
+            }
+        }
+
+        return 'Other';
+    }
+
+    /**
+     * Detect level from product name and Odoo category.
+     */
+    protected function detectLevel(string $name, string $categName): string
+    {
+        $lower = strtolower($name);
+        $categLower = strtolower($categName);
+
+        // Check Odoo category first
+        if (str_contains($categLower, 'a level') || str_contains($categLower, 'as/a')) {
+            return 'A-Level';
+        }
+        if (str_contains($categLower, 'o level') || str_contains($categLower, 'igcse/o')) {
+            return 'O-Level';
+        }
+        if ($categLower === 'primary') {
+            return 'Primary';
+        }
+        if (str_contains($categLower, 'igcse')) {
+            return 'IGCSE';
+        }
+
+        // Check product name
+        if (preg_match('/\ba[\s-]?level\b/i', $name) || preg_match('/\bas[\s-]?level\b/i', $name)) {
+            return 'A-Level';
+        }
+        if (preg_match('/\bo[\s-]?level\b/i', $name)) {
+            return 'O-Level';
+        }
+        if (preg_match('/\bigcse\b/i', $name)) {
+            return 'IGCSE';
+        }
+        if (preg_match('/\b(grade\s*[1-7]|primary)\b/i', $name)) {
+            return 'Primary';
+        }
+        if (preg_match('/\becd\b/i', $name)) {
+            return 'ECD';
+        }
+        if (preg_match('/\bas\s/i', $lower) || str_contains($lower, ' as ')) {
+            return 'A-Level';
+        }
+        // Form-based levels (F1-F4 = O-Level, F5-F6 = A-Level)
+        if (preg_match('/\bF\s*[5-6]\b/', $name)) {
+            return 'A-Level';
+        }
+        if (preg_match('/\bF\s*[1-4]\b/', $name)) {
+            return 'O-Level';
+        }
+
+        return 'Other';
     }
 }

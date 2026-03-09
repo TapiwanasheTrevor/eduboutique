@@ -64,7 +64,7 @@ class ShopController extends Controller
      */
     private function buildProductQuery(Request $request)
     {
-        $query = Product::query()->where('stock_status', '!=', 'out_of_stock');
+        $query = Product::query();
 
         // Search
         if ($request->has('q') && $request->q) {
