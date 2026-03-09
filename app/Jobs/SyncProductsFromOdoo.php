@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Product;
+use App\Observers\ProductObserver;
 use App\Services\OdooService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -33,6 +34,9 @@ class SyncProductsFromOdoo implements ShouldQueue
     {
         try {
             Log::info('Starting product sync from Odoo');
+
+            // Prevent observer from dispatching SyncProductToOdoo for each update
+            ProductObserver::$syncingFromOdoo = true;
 
             // No need to fetch image_1920 — images are served directly from Odoo
             $products = $odoo->search(
@@ -76,9 +80,12 @@ class SyncProductsFromOdoo implements ShouldQueue
                 ->whereNotNull('odoo_product_id')
                 ->update(['cover_image' => null]);
 
+            ProductObserver::$syncingFromOdoo = false;
+
             Log::info('Product sync completed successfully');
 
         } catch (\Exception $e) {
+            ProductObserver::$syncingFromOdoo = false;
             Log::error('Product sync failed: ' . $e->getMessage(), [
                 'exception' => $e,
                 'trace' => $e->getTraceAsString()
@@ -107,7 +114,7 @@ class SyncProductsFromOdoo implements ShouldQueue
                 ]
             );
 
-            Log::info('Synced product: ' . $product->title, [
+            Log::debug('Synced product: ' . $product->title, [
                 'product_id' => $product->id,
                 'odoo_product_id' => $odooProduct['id']
             ]);

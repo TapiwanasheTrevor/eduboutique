@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Product;
+use App\Observers\ProductObserver;
 use App\Services\OdooService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,6 +33,9 @@ class SyncStockLevelsFromOdoo implements ShouldQueue
     {
         try {
             Log::info('Starting stock levels sync from Odoo');
+
+            // Prevent observer from dispatching SyncProductToOdoo for each update
+            ProductObserver::$syncingFromOdoo = true;
 
             // Fetch all stock levels from Odoo in one batch call
             $odooProducts = $odoo->search(
@@ -70,12 +74,15 @@ class SyncStockLevelsFromOdoo implements ShouldQueue
                 }
             });
 
+            ProductObserver::$syncingFromOdoo = false;
+
             Log::info('Stock levels sync completed', [
                 'success' => $successCount,
                 'failed' => $failCount,
             ]);
 
         } catch (\Exception $e) {
+            ProductObserver::$syncingFromOdoo = false;
             Log::error('Stock levels sync failed: ' . $e->getMessage());
             throw $e;
         }
