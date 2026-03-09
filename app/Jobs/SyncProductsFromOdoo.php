@@ -101,11 +101,22 @@ class SyncProductsFromOdoo implements ShouldQueue
     protected function syncProduct(array $odooProduct): void
     {
         try {
+            $slug = Str::slug($odooProduct['name']);
+
+            // Append Odoo ID to slug if another product already uses it
+            $existing = Product::where('slug', $slug)
+                ->where('odoo_product_id', '!=', $odooProduct['id'])
+                ->exists();
+
+            if ($existing) {
+                $slug = $slug . '-' . $odooProduct['id'];
+            }
+
             $product = Product::updateOrCreate(
                 ['odoo_product_id' => $odooProduct['id']],
                 [
                     'title' => $odooProduct['name'],
-                    'slug' => Str::slug($odooProduct['name']),
+                    'slug' => $slug,
                     'price_usd' => $odooProduct['list_price'] ?? 0,
                     'stock_quantity' => $odooProduct['qty_available'] ?? 0,
                     'stock_status' => $this->determineStockStatus($odooProduct['qty_available'] ?? 0),
