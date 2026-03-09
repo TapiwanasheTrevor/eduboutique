@@ -1,6 +1,7 @@
 **/node_modules
 /public/hot
 /public/storage
+/public/library
 /storage/*.key
 /vendor
 .env
@@ -18,4 +19,10 @@ yarn-error.log
 /tests
 *.xlsx
 *.log
+*.json.bak
 .git
+__pycache__
+*.pyc
+/image_list.txt
+/odoo_catalog.json
+/progress.json
