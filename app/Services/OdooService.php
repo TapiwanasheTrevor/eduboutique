@@ -84,10 +84,12 @@ class OdooService
                 return [];
             }
 
+            Log::info("Odoo search found " . count($ids) . " records", ['model' => $model]);
+
             return $this->read($model, $ids, $fields);
 
         } catch (Exception $e) {
-            $this->logSync($model, null, 'search', 'from_odoo', 'error', $domain, null, $e->getMessage());
+            Log::error("Odoo search failed: " . $e->getMessage(), ['model' => $model]);
             throw $e;
         }
     }
@@ -117,7 +119,10 @@ class OdooService
                 ['fields' => $fields]
             );
 
-            $this->logSync($model, null, 'read', 'from_odoo', 'success', ['ids' => $ids], $records);
+            // Only log reads for small batches to avoid bloating sync logs
+            if (count($ids) <= 10) {
+                $this->logSync($model, null, 'read', 'from_odoo', 'success', ['ids' => $ids], $records);
+            }
 
             return $records;
 

@@ -23,6 +23,8 @@ class SyncStockLevelsFromOdoo implements ShouldQueue
         //
     }
 
+    public $timeout = 300;
+
     /**
      * Execute the job.
      */
@@ -31,90 +33,50 @@ class SyncStockLevelsFromOdoo implements ShouldQueue
         try {
             Log::info('Starting stock levels sync from Odoo');
 
-            $totalCount = Product::whereNotNull('odoo_product_id')->count();
+            // Fetch all stock levels from Odoo in one batch call
+            $odooProducts = $odoo->search(
+                'product.product',
+                [['sale_ok', '=', true]],
+                ['qty_available']
+            );
 
-            Log::info('Found ' . $totalCount . ' products to sync stock levels');
+            // Index by Odoo product ID for fast lookup
+            $stockByOdooId = collect($odooProducts)->keyBy('id');
+
+            Log::info('Fetched stock levels from Odoo', ['count' => $stockByOdooId->count()]);
 
             $successCount = 0;
             $failCount = 0;
 
-            // Process in chunks to avoid loading all products into memory
-            Product::whereNotNull('odoo_product_id')->chunk(100, function ($products) use ($odoo, &$successCount, &$failCount) {
+            // Update local products in chunks
+            Product::whereNotNull('odoo_product_id')->chunk(200, function ($products) use ($stockByOdooId, &$successCount, &$failCount) {
                 foreach ($products as $product) {
-                    try {
-                        $this->syncStockLevel($odoo, $product);
-                        $successCount++;
-                    } catch (\Exception $e) {
+                    $odooData = $stockByOdooId->get($product->odoo_product_id);
+
+                    if (!$odooData) {
                         $failCount++;
-                        Log::error('Failed to sync stock level for product: ' . $product->title, [
-                            'product_id' => $product->id,
-                            'odoo_product_id' => $product->odoo_product_id,
-                            'error' => $e->getMessage()
-                        ]);
+                        continue;
                     }
+
+                    $quantity = $odooData['qty_available'] ?? 0;
+
+                    $product->update([
+                        'stock_quantity' => $quantity,
+                        'stock_status' => $this->determineStockStatus($quantity),
+                        'odoo_synced_at' => now(),
+                    ]);
+
+                    $successCount++;
                 }
             });
 
             Log::info('Stock levels sync completed', [
                 'success' => $successCount,
                 'failed' => $failCount,
-                'total' => $totalCount
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Stock levels sync failed: ' . $e->getMessage(), [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            throw $e;
-        }
-    }
-
-    /**
-     * Sync stock level for a single product.
-     */
-    protected function syncStockLevel(OdooService $odoo, Product $product): void
-    {
-        try {
-            // Read product data from Odoo
-            $odooProduct = $odoo->read(
-                'product.product',
-                [$product->odoo_product_id],
-                ['qty_available']
-            );
-
-            if (empty($odooProduct)) {
-                Log::warning('Product not found in Odoo', [
-                    'product_id' => $product->id,
-                    'odoo_product_id' => $product->odoo_product_id
-                ]);
-                return;
-            }
-
-            $quantity = $odooProduct[0]['qty_available'] ?? 0;
-
-            // Update product stock in Laravel
-            $product->update([
-                'stock_quantity' => $quantity,
-                'stock_status' => $this->determineStockStatus($quantity),
-                'odoo_synced_at' => now(),
-            ]);
-
-            Log::debug('Synced stock level for product: ' . $product->title, [
-                'product_id' => $product->id,
-                'odoo_product_id' => $product->odoo_product_id,
-                'quantity' => $quantity,
-                'status' => $product->stock_status
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to sync stock level for product', [
-                'product_id' => $product->id,
-                'odoo_product_id' => $product->odoo_product_id,
-                'error' => $e->getMessage()
-            ]);
-
+            Log::error('Stock levels sync failed: ' . $e->getMessage());
             throw $e;
         }
     }

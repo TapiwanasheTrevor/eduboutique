@@ -24,6 +24,8 @@ class SyncProductsFromOdoo implements ShouldQueue
         //
     }
 
+    public $timeout = 300;
+
     /**
      * Execute the job.
      */
@@ -48,9 +50,31 @@ class SyncProductsFromOdoo implements ShouldQueue
 
             Log::info('Found ' . count($products) . ' products in Odoo');
 
+            $odooIds = [];
+
             foreach ($products as $odooProduct) {
                 $this->syncProduct($odooProduct);
+                $odooIds[] = $odooProduct['id'];
             }
+
+            // Remove orphaned products that no longer exist in Odoo
+            $orphaned = Product::whereNotNull('odoo_product_id')
+                ->whereNotIn('odoo_product_id', $odooIds)
+                ->count();
+
+            if ($orphaned > 0) {
+                Product::whereNotNull('odoo_product_id')
+                    ->whereNotIn('odoo_product_id', $odooIds)
+                    ->delete();
+                Log::info("Removed {$orphaned} orphaned products no longer in Odoo");
+            }
+
+            // Clear stale cover_image paths pointing to deleted local files
+            Product::whereNotNull('cover_image')
+                ->where('cover_image', '!=', '')
+                ->where('cover_image', 'not like', 'http%')
+                ->whereNotNull('odoo_product_id')
+                ->update(['cover_image' => null]);
 
             Log::info('Product sync completed successfully');
 
